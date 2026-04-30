@@ -1,0 +1,490 @@
+import React, { useState, useEffect } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  PermissionsAndroid,
+  SafeAreaView
+} from 'react-native';
+import {
+  Camera as CameraIcon,
+  RefreshCw,
+  LogOut,
+  LogIn,
+  CheckCircle2,
+  ChevronLeft
+} from 'lucide-react-native';
+import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
+import { useAuth } from '../context/AuthContext';
+import { attendanceService } from '../services/attendanceService';
+import Geolocation from '@react-native-community/geolocation';
+import { launchCamera } from 'react-native-image-picker';
+import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
+
+export default function EmployeeAttendanceScreen({ navigation }: any) {
+  const { user } = useAuth();
+  
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  
+  const [attendance, setAttendance] = useState<any>(null);
+  
+  const [photo, setPhoto] = useState<any>(null);
+  const [rawCoords, setRawCoords] = useState<{ lat: number, lng: number } | null>(null);
+  const [locationText, setLocationText] = useState('');
+  const [fetchingLocation, setFetchingLocation] = useState(false);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    fetchTodayStatus();
+  }, []);
+
+  const fetchTodayStatus = async () => {
+    try {
+      const response = await attendanceService.getTodayAttendance();
+      if (response && response.attendance !== undefined) {
+        setAttendance(response.attendance);
+      }
+      // If we need to step in/out, fire the GPS early
+      if (!response?.attendance?.stepOut) {
+         fetchGPSAsync();
+      }
+    } catch (error) {
+      console.error('[EmployeeAttendance] Fetching attendance failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchGPSAsync = async () => {
+    setFetchingLocation(true);
+    setLocationText('Locating automatically...');
+
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+        ]);
+        const fineGranted = granted['android.permission.ACCESS_FINE_LOCATION'] === PermissionsAndroid.RESULTS.GRANTED;
+        const coarseGranted = granted['android.permission.ACCESS_COARSE_LOCATION'] === PermissionsAndroid.RESULTS.GRANTED;
+
+        if (!fineGranted && !coarseGranted) {
+          setFetchingLocation(false);
+          setLocationText('');
+          return;
+        }
+      } catch (err) {
+        setFetchingLocation(false);
+        setLocationText('');
+        return;
+      }
+    }
+
+    Geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setRawCoords({ lat: latitude, lng: longitude });
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, {
+            headers: {
+              'User-Agent': 'GreenCityAMC-AttendanceApp/1.0 (Mobile)',
+              'Accept': 'application/json'
+            }
+          });
+          const json = await res.json();
+          setLocationText(json.display_name || '');
+        } catch (e) {
+          setLocationText('');
+        }
+        setFetchingLocation(false);
+      },
+      (error) => {
+        console.warn(`[GPS ERROR] ${error.message}`);
+        setLocationText('');
+        setFetchingLocation(false);
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 5000 }
+    );
+  };
+
+  const capturePhoto = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Permission Denied', 'Camera permission is required.');
+        return;
+      }
+    }
+
+    try {
+      const result = await launchCamera({
+        mediaType: 'photo',
+        cameraType: 'front',
+        quality: 0.5,
+      });
+
+      if (result.assets && result.assets.length > 0) {
+        setPhoto(result.assets[0]);
+      }
+    } catch (e) {
+      console.log('Camera Error', e);
+    }
+  };
+
+  const triggerSuccess = () => {
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      navigation.navigate('HOME'); // Navigate back after success
+    }, 2000);
+  };
+
+  const handleSubmission = async () => {
+    const isSteppingIn = !attendance || (attendance && !attendance.stepIn);
+    
+    if (isSteppingIn && !photo) {
+      Alert.alert('Photo Required', 'Please tap the camera box to capture a selfie.');
+      return;
+    }
+
+    if (!locationText.trim()) {
+      Alert.alert('Location Required', 'Please wait for auto-detect or type your location manually.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append('latitude', String(rawCoords?.lat || 0));
+      formData.append('longitude', String(rawCoords?.lng || 0));
+      formData.append('address', locationText);
+      if (note) formData.append('note', note);
+
+      if (isSteppingIn) {
+        formData.append('stepInImage', {
+          uri: photo.uri,
+          type: photo.type || 'image/jpeg',
+          name: photo.fileName || 'photo.jpg',
+        } as any);
+        await attendanceService.employeeStepIn(formData);
+      } else {
+        await attendanceService.employeeStepOut(formData);
+      }
+      
+      triggerSuccess();
+    } catch (error: any) {
+      console.error(`[Attendance] FAILED:`, error);
+      Alert.alert('ERROR', error?.response?.data?.message || 'Could not save attendance. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  const isSteppingIn = !attendance || (attendance && !attendance.stepIn);
+  const isCompleted = attendance && attendance.stepOut;
+
+  if (isCompleted) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centerContent]}>
+        <CheckCircle2 size={80} color={Colors.success} />
+        <Text style={styles.completedText}>You have completed your shift today!</Text>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        {showSuccess ? (
+          <Animated.View entering={FadeIn} style={[styles.container, styles.centerContent]}>
+            <Animated.View entering={ZoomIn.duration(400)}>
+              <CheckCircle2 size={80} color={Colors.success} style={{ marginBottom: 20 }} />
+            </Animated.View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: Colors.success }}>Success!</Text>
+          </Animated.View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+            <View style={[styles.header, { flexDirection: 'row', alignItems: 'center' }]}>
+               <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginRight: 8, marginLeft: -8 }}>
+                 <ChevronLeft size={28} color={Colors.text} />
+               </TouchableOpacity>
+               <View>
+                 <Text style={styles.title}>{isSteppingIn ? 'Step In' : 'Step Out'}</Text>
+                 <Text style={styles.subtitle}>Capture your details to mark attendance</Text>
+               </View>
+            </View>
+
+            {/* Selfie Section */}
+            {isSteppingIn && (
+              <View style={styles.section}>
+                <Text style={styles.label}>Selfie Verification</Text>
+                <TouchableOpacity
+                  style={styles.viewfinder}
+                  onPress={capturePhoto}
+                  activeOpacity={0.8}
+                >
+                  {photo ? (
+                    <View style={styles.imageContainer}>
+                      <Image source={{ uri: photo.uri }} style={styles.capturedImage} />
+                      <View style={styles.retakeOverlay}>
+                        <View style={styles.retakeIconCircle}>
+                          <RefreshCw size={24} color={Colors.surface} />
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyCamera}>
+                      <CameraIcon size={48} color={Colors.textSecondary} />
+                      <Text style={styles.emptyCameraText}>Tap to capture</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.section}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Location</Text>
+                <View style={styles.locationInputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Auto-detecting..."
+                    value={locationText}
+                    onChangeText={setLocationText}
+                    editable={!fetchingLocation}
+                  />
+                  {fetchingLocation && (
+                     <ActivityIndicator size="small" color={Colors.primary} style={styles.locationLoader} />
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Note (Optional)</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Add any context..."
+                  multiline
+                  value={note}
+                  onChangeText={setNote}
+                />
+              </View>
+            </View>
+
+            {/* Organic Integrated Button */}
+            <View style={{ marginTop: Spacing.xl }}>
+               <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    isSteppingIn ? styles.inBtnColor : styles.outBtnColor,
+                    submitting && { opacity: 0.5 }
+                  ]}
+                  onPress={handleSubmission}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color={Colors.surface} />
+                  ) : (
+                    <View style={styles.submitBtnContent}>
+                      {isSteppingIn ? <LogIn size={20} color={Colors.surface} /> : <LogOut size={20} color={Colors.surface} />}
+                      <Text style={styles.submitBtnText}>
+                        {isSteppingIn ? 'MARK STEP IN' : 'MARK STEP OUT'}
+                      </Text>
+                    </View>
+                  )}
+               </TouchableOpacity>
+            </View>
+
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  scrollBody: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xxl * 2,
+    paddingTop: 50,
+  },
+  header: {
+    marginBottom: Spacing.xl,
+    paddingBottom: Spacing.md,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#64748b',
+    marginTop: 6,
+    fontWeight: '500',
+  },
+  section: {
+    marginBottom: Spacing.xxl,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: Spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  viewfinder: {
+    width: '100%',
+    height: 320,
+    backgroundColor: '#ffffff',
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#64748b',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+  },
+  capturedImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  retakeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  retakeIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  emptyCamera: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  emptyCameraText: {
+    marginTop: 16,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  inputGroup: {
+    marginBottom: Spacing.lg,
+  },
+  locationInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: BorderRadius.lg,
+    shadowColor: '#94a3b8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  input: {
+    flex: 1,
+    height: 60,
+    paddingHorizontal: Spacing.lg,
+    fontSize: 16,
+    color: '#0f172a',
+    backgroundColor: 'transparent',
+    fontWeight: '500',
+  },
+  locationLoader: {
+    position: 'absolute',
+    right: Spacing.lg,
+  },
+  textArea: {
+    height: 120,
+    paddingTop: Spacing.lg,
+    textAlignVertical: 'top',
+    backgroundColor: '#ffffff',
+    borderRadius: BorderRadius.lg,
+    shadowColor: '#94a3b8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  submitBtn: {
+    height: 64,
+    borderRadius: BorderRadius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  inBtnColor: {
+    backgroundColor: Colors.primary,
+  },
+  outBtnColor: {
+    backgroundColor: Colors.error,
+  },
+  submitBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  submitBtnText: {
+    color: Colors.surface,
+    fontSize: 18,
+    fontWeight: '900',
+    marginLeft: 12,
+    letterSpacing: 1,
+  },
+  completedText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
+    textAlign: 'center',
+    marginTop: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+  }
+});

@@ -1,4 +1,4 @@
-package com.greencityamc
+package com.greencity.amc
 
 import android.app.Application
 import com.facebook.react.PackageList

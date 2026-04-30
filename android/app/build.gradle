@@ -1,6 +1,14 @@
-apply plugin: "com.android.application"
-apply plugin: "org.jetbrains.kotlin.android"
-apply plugin: "com.facebook.react"
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.facebook.react")
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -73,17 +81,25 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-    ndkVersion rootProject.ext.ndkVersion
-    buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion "27.1.12297006"
+    buildToolsVersion "36.0.0"
+    compileSdk 36
 
-    namespace "com.greencityamc"
+    namespace "com.greencity.amc"
     defaultConfig {
-        applicationId "com.greencityamc"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        applicationId "com.greencity.amc"
+        minSdkVersion 24
+        targetSdkVersion 36
         versionCode 1
         versionName "1.0"
+
+        // React Native 0.85 uses C++20 (concepts) in its native code.
+        externalNativeBuild {
+            cmake {
+                arguments "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_CXX_EXTENSIONS=ON"
+                cppFlags "-std=gnu++20"
+            }
+        }
     }
     signingConfigs {
         debug {
@@ -92,15 +108,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile rootProject.file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

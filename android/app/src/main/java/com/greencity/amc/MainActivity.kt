@@ -1,4 +1,4 @@
-package com.greencityamc
+package com.greencity.amc
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
