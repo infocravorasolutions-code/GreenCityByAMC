@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -43,10 +43,46 @@ import { attendanceService } from '../services/attendanceService';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
 
+const Avatar = ({ item }: { item: any }) => {
+  const [imgError, setImgError] = useState(false);
+  const rawUrl = item.profileImage || item.image || item.photo;
+  
+  const getImageUrl = (url: string | null | undefined) => {
+    if (!url || typeof url !== 'string' || url.trim() === '' || url === 'null') return null;
+    if (url.startsWith('http')) return url;
+    
+    // FIX: The backend serves uploaded files from the /static/ directory
+    if (url.startsWith('/static/')) return `https://api.greencityamc.com${url}`;
+    if (url.startsWith('/')) return `https://api.greencityamc.com/static${url}`;
+    return `https://api.greencityamc.com/static/${url}`;
+  };
+  const finalUrl = getImageUrl(rawUrl);
+  return (
+    <View style={[styles.photoSmall, { backgroundColor: '#0056D215', overflow: 'hidden', padding: 0 }]}>
+      {finalUrl && !imgError ? (
+        <Image 
+          source={{ uri: finalUrl }} 
+          style={{ width: '100%', height: '100%', resizeMode: 'cover' }} 
+          onError={(e) => {
+            // Added error logging so we can catch 404s in the console
+            console.log('Image load error for:', finalUrl, e.nativeEvent.error);
+            setImgError(true);
+          }}
+        />
+      ) : (
+        <Text style={styles.initialSmall}>
+          {item.name ? item.name.charAt(0).toUpperCase() : 'U'}
+        </Text>
+      )}
+    </View>
+  );
+};
+
 export default function AttendanceScreen() {
   const [search, setSearch] = useState('');
   const [employees, setEmployees] = useState<any[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<any[]>([]);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Loading States
   const [loading, setLoading] = useState(true);
@@ -111,23 +147,39 @@ export default function AttendanceScreen() {
       }
 
       // Merge: Update employee working status based on actual live logs
+      const attendanceMap = new Map();
+      attendanceRecords.forEach((r: any) => {
+        const empId = r.employeeId?._id || r.employeeId;
+        if (!attendanceMap.has(empId)) {
+          attendanceMap.set(empId, []);
+        }
+        attendanceMap.get(empId).push(r);
+      });
+
       const processedEmployees = empArray.map((emp: any) => {
-        // Get all records for this employee
-        const empRecords = attendanceRecords.filter((r: any) => 
-          (r.employeeId === emp._id) || (r.employeeId?._id === emp._id)
-        );
+        // Get all records for this employee from Map (O(1) lookup)
+        const empRecords = attendanceMap.get(emp._id) || [];
 
         // Sort them by stepIn date descending to get the absolute most recent one
-        empRecords.sort((a, b) => new Date(b.stepIn || 0).getTime() - new Date(a.stepIn || 0).getTime());
-        
+        empRecords.sort((a: any, b: any) => new Date(b.stepIn || 0).getTime() - new Date(a.stepIn || 0).getTime());
+
         const latestRecord = empRecords[0];
-        
+
+        let hasCompletedShift = false;
+        if (latestRecord && latestRecord.stepOut && latestRecord.stepIn) {
+          const recordDateStr = getISTDateStr(new Date(latestRecord.stepIn));
+          if (recordDateStr === todayStr) {
+            hasCompletedShift = true;
+          }
+        }
+
         return {
           ...emp,
           attendance: latestRecord,
           // Source of truth: The absolute newest attendance record overrides any stale backend flag.
           // If no record exists for today/yesterday, they are strictly NOT working.
-          isWorking: latestRecord ? !latestRecord.stepOut : false 
+          isWorking: latestRecord ? !latestRecord.stepOut : false,
+          hasCompletedShift
         };
       });
 
@@ -158,6 +210,24 @@ export default function AttendanceScreen() {
     } else {
       setFilteredEmployees(dataToFilter);
     }
+  };
+
+  const onSearchChangeText = (text: string) => {
+    setSearch(text);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      if (text) {
+        const filtered = employees.filter(emp =>
+          (emp.name && emp.name.toLowerCase().includes(text.toLowerCase())) ||
+          (emp.empCode && emp.empCode.toLowerCase().includes(text.toLowerCase()))
+        );
+        setFilteredEmployees(filtered);
+      } else {
+        setFilteredEmployees(employees);
+      }
+    }, 300);
   };
 
   const resetForm = () => {
@@ -344,7 +414,7 @@ export default function AttendanceScreen() {
             style={styles.searchInput}
             placeholder="Search Name or Code..."
             value={search}
-            onChangeText={(t) => handleSearch(t)}
+            onChangeText={onSearchChangeText}
           />
         </View>
 
@@ -352,25 +422,23 @@ export default function AttendanceScreen() {
           data={search ? filteredEmployees : employees}
           keyExtractor={item => item._id}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
           }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.employeeItem}
-              onPress={() => initStepAction(item)}
-              activeOpacity={0.7}
+              onPress={() => {
+                if (item.hasCompletedShift && !item.isWorking) return;
+                initStepAction(item);
+              }}
+              activeOpacity={item.hasCompletedShift && !item.isWorking ? 1 : 0.7}
             >
-              <View style={[styles.photoSmall, { backgroundColor: `${Colors.primary}15`, overflow: 'hidden', padding: 0 }]}>
-                {(item.profileImage || item.image || item.photo) ? (
-                  <Image 
-                    source={{ uri: item.profileImage || item.image || item.photo }} 
-                    style={{ width: '100%', height: '100%', resizeMode: 'cover' }} 
-                  />
-                ) : (
-                  <Text style={styles.initialSmall}>{item.name ? item.name.charAt(0).toUpperCase() : 'U'}</Text>
-                )}
-              </View>
+              <Avatar item={item} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.employeeName}>{item.name}</Text>
                 <Text style={styles.employeeCode}>{item.empCode}</Text>
@@ -382,8 +450,10 @@ export default function AttendanceScreen() {
                   <Text style={styles.stepActionText}>STEP OUT</Text>
                 </View>
               ) : (
-                <View style={styles.stepInAction}>
-                  <Text style={styles.stepActionText}>STEP IN</Text>
+                <View style={[styles.stepInAction, item.hasCompletedShift && { backgroundColor: Colors.border }]}>
+                  <Text style={[styles.stepActionText, item.hasCompletedShift && { color: Colors.textSecondary }]}>
+                    {item.hasCompletedShift ? 'COMPLETED' : 'STEP IN'}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -483,7 +553,7 @@ export default function AttendanceScreen() {
                       onChangeText={setNote}
                     />
                   </View>
-                  
+
                   {/* Organic Action Button */}
                   <TouchableOpacity
                     style={[
