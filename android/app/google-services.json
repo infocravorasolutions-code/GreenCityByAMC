@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "997904118611",
+    "project_id": "greencityamc-app",
+    "storage_bucket": "greencityamc-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997904118611:android:4be38bcba87d2e6fa6a7a6",
+        "android_client_info": {
+          "package_name": "com.greencity.amc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDOKxQcMiEYNX4IzWJvNcHc4rzqXo9is-c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -90,8 +90,17 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
       }
     }
 
+    // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
+    const fallbackTimeout = setTimeout(() => {
+      setFetchingLocation(false);
+      if (locationText === 'Locating automatically...') {
+         setLocationText('');
+      }
+    }, 8000);
+
     Geolocation.getCurrentPosition(
       async (position) => {
+        clearTimeout(fallbackTimeout);
         const { latitude, longitude } = position.coords;
         setRawCoords({ lat: latitude, lng: longitude });
         try {
@@ -109,6 +118,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
         setFetchingLocation(false);
       },
       (error) => {
+        clearTimeout(fallbackTimeout);
         console.warn(`[GPS ERROR] ${error.message}`);
         setLocationText('');
         setFetchingLocation(false);
@@ -150,7 +160,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
   };
 
   const handleSubmission = async () => {
-    const isSteppingIn = !attendance || (attendance && !attendance.stepIn);
+    const isSteppingIn = !attendance || (attendance && (!attendance.stepIn || attendance.stepIn === 'null'));
     
     if (isSteppingIn && !photo) {
       Alert.alert('Photo Required', 'Please tap the camera box to capture a selfie.');
@@ -198,7 +208,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     );
   }
 
-  const isSteppingIn = !attendance || (attendance && !attendance.stepIn);
+  const isSteppingIn = !attendance || (attendance && (!attendance.stepIn || attendance.stepIn === 'null'));
   const isCompleted = attendance && attendance.stepOut;
 
   if (isCompleted) {
@@ -266,10 +276,9 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
                 <View style={styles.locationInputWrapper}>
                   <TextInput
                     style={styles.input}
-                    placeholder="Auto-detecting..."
+                    placeholder="Enter location manually..."
                     value={locationText}
                     onChangeText={setLocationText}
-                    editable={!fetchingLocation}
                   />
                   {fetchingLocation && (
                      <ActivityIndicator size="small" color={Colors.primary} style={styles.locationLoader} />

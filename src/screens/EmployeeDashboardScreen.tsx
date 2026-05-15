@@ -65,16 +65,27 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
   const fetchTodayStatus = async () => {
     try {
       const response = await attendanceService.getTodayAttendance();
-      if (response) {
-        setAttendance(response.attendance);
+      // Handle both { attendance: {...} } and direct object shapes
+      const record = response?.attendance ?? response ?? null;
+      // Only set attendance if the record has an actual stepIn (not null/empty)
+      if (record && record.stepIn && record.stepIn !== 'null') {
+        setAttendance(record);
+      } else {
+        setAttendance(null); // No active record today — reset to 'Not Started'
       }
-    } catch (error) {
-      console.error('[EmployeeDashboard] Fetching attendance failed:', error);
+    } catch (error: any) {
+      // 404 means no attendance today — that's normal, not an error
+      if (error?.response?.status === 404) {
+        setAttendance(null);
+      } else {
+        console.error('[EmployeeDashboard] Fetching attendance failed:', error);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -106,8 +117,8 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
     );
   }
 
-  const isSteppedIn = attendance && !attendance.stepOut;
-  const isCompleted = attendance && attendance.stepOut;
+  const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
+  const hasStartedShift = attendance && attendance.shiftFirstStepIn;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -136,20 +147,20 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
             </View>
             
             <View style={styles.statusIndicator}>
-              {isCompleted ? (
-                <>
-                  <CheckCircle2 size={48} color={Colors.success} />
-                  <Text style={[styles.statusMainText, { color: Colors.success }]}>Shift Completed</Text>
-                  <Text style={styles.statusSubText}>
-                    In: {formatTime(attendance.stepIn)} | Out: {formatTime(attendance.stepOut)}
-                  </Text>
-                </>
-              ) : isSteppedIn ? (
+              {isSteppedIn ? (
                 <>
                   <Clock size={48} color={Colors.warning} />
                   <Text style={[styles.statusMainText, { color: Colors.warning }]}>Currently Working</Text>
                   <Text style={styles.statusSubText}>
                     Stepped in at {formatTime(attendance.stepIn)}
+                  </Text>
+                </>
+              ) : hasStartedShift ? (
+                <>
+                  <CheckCircle2 size={48} color={Colors.success} />
+                  <Text style={[styles.statusMainText, { color: Colors.success }]}>Stepped Out</Text>
+                  <Text style={styles.statusSubText}>
+                    Shift started at {formatTime(attendance.shiftFirstStepIn)}
                   </Text>
                 </>
               ) : (

@@ -13,9 +13,11 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  PermissionsAndroid
 } from 'react-native';
-import { Search, Plus, Trash2, Edit2, X, ChevronDown } from 'lucide-react-native';
+import { Search, Plus, Trash2, Edit2, X, ChevronDown, Camera, FileText, CheckCircle2, Mic, MicOff } from 'lucide-react-native';
+import * as Voice from '@ascendtis/react-native-voice-to-text';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { managerService } from '../services/managerService';
 
@@ -33,6 +35,10 @@ export default function StaffScreen({ navigation }: any) {
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState('');
   const [showDesignation, setShowDesignation] = useState(false);
+  // Single-page form — no tabs needed
+  const [isListening, setIsListening] = useState(false);
+  const listeningFieldRef = React.useRef<string | null>(null);
+  const [listeningField, setListeningField] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -40,15 +46,125 @@ export default function StaffScreen({ navigation }: any) {
     empCode: '',
     designation: '',
     category: 'semiSkilled',
-    shift: 'morning',
+    shift: 'day',
     phone: '',
     email: '',
     department: '',
+    password: '',
+    address: '',
+    hourlyRate: '',
+    uan: '',
+    esic: '',
+    accountNo: '',
+    ifsc: '',
+    isActive: true,
   });
+
+  // File States
+  const [profilePhoto, setProfilePhoto] = useState<any>(null);
+  const [aadhaarFront, setAadhaarFront] = useState<any>(null);
+  const [aadhaarBack, setAadhaarBack] = useState<any>(null);
+  const [panCard, setPanCard] = useState<any>(null);
 
   useEffect(() => {
     fetchEmployees();
-  }, []);
+
+    console.log('[Voice] Initializing stable module...', Voice);
+    
+    // Voice results (Final)
+    const speechResultsSub = Voice.addEventListener('onSpeechResults', (e: any) => {
+      console.log('[Voice Results]', e.value);
+      const currentField = listeningFieldRef.current;
+      if (e.value && currentField) {
+        setFormData(prev => ({ ...prev, [currentField]: e.value }));
+        stopListening();
+      }
+    });
+
+    // Partial results (Real-time typing)
+    const partialResultsSub = Voice.addEventListener('onSpeechPartialResults', (e: any) => {
+      console.log('[Voice Partial]', e.value);
+      const currentField = listeningFieldRef.current;
+      if (e.value && currentField) {
+        setFormData(prev => ({ ...prev, [currentField]: e.value }));
+      }
+    });
+
+    const speechErrorSub = Voice.addEventListener('onSpeechError', (e: any) => {
+      console.error('[Voice Error]', e);
+      stopListening();
+    });
+
+    return () => {
+      speechResultsSub.remove();
+      partialResultsSub.remove();
+      speechErrorSub.remove();
+      Voice.destroy();
+    };
+  }, []); // Run once on mount
+
+  // Methods removed as they are now handled inside useEffect listeners or replaced by new API
+
+  const startListening = async (field: string) => {
+    console.log(`[Voice] Requesting permission and starting listening for: ${field}`);
+    
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'GreenCityAMC needs access to your microphone to help you enter details with your voice.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Permission Denied', 'Microphone permission is required for voice input.');
+          return;
+        }
+
+        // Check if recognition is available on this device
+        const available = await Voice.isRecognitionAvailable();
+        if (!available) {
+          Alert.alert('Service Not Available', 'Speech recognition is not supported or enabled on this device. Please ensure the Google app is installed and updated.');
+          return;
+        }
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+    }
+
+    try {
+      await Voice.setRecognitionLanguage('en-IN');
+      listeningFieldRef.current = field;
+      setListeningField(field);
+      setIsListening(true);
+      await Voice.startListening(); 
+      console.log('[Voice] Listening started successfully for:', field);
+    } catch (e) {
+      console.error('[Voice Start Error]', e);
+      setIsListening(false);
+      listeningFieldRef.current = null;
+      setListeningField(null);
+      Alert.alert('Voice Error', 'Could not start voice recognition. Please try again.');
+    }
+  };
+
+  const stopListening = async () => {
+    console.log('[Voice] Stopping listening...');
+    try {
+      await Voice.stopListening();
+      setIsListening(false);
+      listeningFieldRef.current = null;
+      setListeningField(null);
+      console.log('[Voice] Listening stopped');
+    } catch (e) {
+      console.error('[Voice Stop Error]', e);
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -93,11 +209,23 @@ export default function StaffScreen({ navigation }: any) {
       empCode: '',
       designation: '',
       category: 'semiSkilled',
-      shift: 'morning',
+      shift: 'day',
       phone: '',
       email: '',
       department: '',
+      password: '',
+      address: '',
+      hourlyRate: '',
+      uan: '',
+      esic: '',
+      accountNo: '',
+      ifsc: '',
+      isActive: true,
     });
+    setProfilePhoto(null);
+    setAadhaarFront(null);
+    setAadhaarBack(null);
+    setPanCard(null);
     setIsEditing(false);
     setModalVisible(true);
   };
@@ -109,13 +237,61 @@ export default function StaffScreen({ navigation }: any) {
       empCode: emp.empCode || '',
       designation: emp.designation || '',
       category: emp.category || 'semiSkilled',
-      shift: emp.shift || 'morning',
+      // Normalize legacy values ('morning', 'evening', etc.) → 'day' since backend only checks === 'night'
+      shift: emp.shift === 'night' ? 'night' : 'day',
       phone: emp.phone || '',
       email: emp.email || '',
       department: emp.department || '',
+      password: '', // Usually not pre-populated
+      address: emp.address || '',
+      hourlyRate: emp.hourlyRate ? String(emp.hourlyRate) : '',
+      uan: emp.uan || '',
+      esic: emp.esic || '',
+      accountNo: emp.accountNo || '',
+      ifsc: emp.ifsc || '',
+      isActive: emp.isActive !== undefined ? emp.isActive : true,
     });
+    setProfilePhoto(null);
+    setAadhaarFront(null);
+    setAadhaarBack(null);
+    setPanCard(null);
     setIsEditing(true);
     setModalVisible(true);
+  };
+
+  const pickImage = async (type: 'profile' | 'aFront' | 'aBack' | 'pan') => {
+    const { launchCamera, launchImageLibrary } = require('react-native-image-picker');
+    
+    Alert.alert(
+      'Select Image',
+      'Choose from gallery or take a new photo',
+      [
+        { text: 'Gallery', onPress: () => handleImagePick(launchImageLibrary, type) },
+        { text: 'Camera', onPress: () => handleImagePick(launchCamera, type) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  const handleImagePick = async (launcher: any, type: string) => {
+    try {
+      const result = await launcher({
+        mediaType: 'photo',
+        quality: 0.3,      // Compress heavily — prevents 413 errors
+        maxWidth: 800,     // Cap resolution
+        maxHeight: 800,
+      });
+
+      if (result.assets && result.assets.length > 0) {
+        const selected = result.assets[0];
+        if (type === 'profile') setProfilePhoto(selected);
+        else if (type === 'aFront') setAadhaarFront(selected);
+        else if (type === 'aBack') setAadhaarBack(selected);
+        else if (type === 'pan') setPanCard(selected);
+      }
+    } catch (e) {
+      console.log('Image Pick Error:', e);
+    }
   };
 
   const handleDelete = (id: string, name: string) => {
@@ -151,8 +327,42 @@ export default function StaffScreen({ navigation }: any) {
     setSaving(true);
     const apiData = new FormData();
     Object.keys(formData).forEach(key => {
-      apiData.append(key, (formData as any)[key]);
+      const val = (formData as any)[key];
+      if (key === 'isActive') {
+        apiData.append(key, val ? 'true' : 'false');
+      } else if (val !== '' && val !== null && val !== undefined) {
+        apiData.append(key, String(val));
+      }
     });
+
+    if (profilePhoto) {
+      apiData.append('image', {   // API field name is 'image', not 'profileImage'
+        uri: profilePhoto.uri,
+        type: profilePhoto.type || 'image/jpeg',
+        name: profilePhoto.fileName || 'profile.jpg',
+      } as any);
+    }
+    if (aadhaarFront) {
+      apiData.append('aadharFront', {   // API uses single-'a': aadharFront
+        uri: aadhaarFront.uri,
+        type: aadhaarFront.type || 'image/jpeg',
+        name: aadhaarFront.fileName || 'aadhar_front.jpg',
+      } as any);
+    }
+    if (aadhaarBack) {
+      apiData.append('aadharBack', {   // API uses single-'a': aadharBack
+        uri: aadhaarBack.uri,
+        type: aadhaarBack.type || 'image/jpeg',
+        name: aadhaarBack.fileName || 'aadhar_back.jpg',
+      } as any);
+    }
+    if (panCard) {
+      apiData.append('panCard', {
+        uri: panCard.uri,
+        type: panCard.type || 'image/jpeg',
+        name: panCard.fileName || 'pancard.jpg',
+      } as any);
+    }
 
     try {
       if (isEditing) {
@@ -305,19 +515,38 @@ export default function StaffScreen({ navigation }: any) {
 
           <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Employee Name <Text style={{ color: Colors.error }}>*</Text></Text>
-              <TextInput style={styles.input} value={formData.name} onChangeText={(t) => setFormData({ ...formData, name: t })} placeholder="John Doe" />
+            {/* ── SECTION 1: Basic Info ── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Basic Info</Text>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Employee Code <Text style={{ color: Colors.error }}>*</Text></Text>
-              <TextInput style={styles.input} value={formData.empCode} onChangeText={(t) => setFormData({ ...formData, empCode: t })} placeholder="EMP-001" autoCapitalize="none" />
+              <Text style={styles.label}>Full Name <Text style={{ color: Colors.error }}>*</Text></Text>
+              <View style={styles.inputWithIcon}>
+                <TextInput style={[styles.input, { flex: 1 }]} value={formData.name} onChangeText={(t) => setFormData({ ...formData, name: t })} placeholder="John Doe" />
+                <TouchableOpacity
+                  style={[styles.micBtn, listeningField === 'name' && styles.micBtnActive]}
+                  onPress={() => listeningField === 'name' ? stopListening() : startListening('name')}
+                >
+                  {listeningField === 'name' ? <MicOff size={20} color={Colors.error} /> : <Mic size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.rowInputs}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
-                <Text style={styles.label}>Phone Number</Text>
+                <Text style={styles.label}>Employee Code <Text style={{ color: Colors.error }}>*</Text></Text>
+                <TextInput style={styles.input} value={formData.empCode} onChangeText={(t) => setFormData({ ...formData, empCode: t })} placeholder="EMP-001" autoCapitalize="none" />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
+                <Text style={styles.label}>Password <Text style={{ color: Colors.error }}>*</Text></Text>
+                <TextInput style={styles.input} value={formData.password} onChangeText={(t) => setFormData({ ...formData, password: t })} placeholder="Min 6 characters" secureTextEntry />
+              </View>
+            </View>
+
+            <View style={styles.rowInputs}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
+                <Text style={styles.label}>Mobile <Text style={{ color: Colors.error }}>*</Text></Text>
                 <TextInput style={styles.input} value={formData.phone} onChangeText={(t) => setFormData({ ...formData, phone: t })} placeholder="1234567890" keyboardType="phone-pad" />
               </View>
               <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
@@ -326,29 +555,68 @@ export default function StaffScreen({ navigation }: any) {
               </View>
             </View>
 
-            <View style={styles.rowInputs}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
-                <Text style={styles.label}>Shift</Text>
-                {/* Simulated Dropdown */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.radioGroup}>
-                  {['morning', 'evening', 'night'].map(s => (
-                    <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
-                      <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Address <Text style={{ color: Colors.error }}>*</Text></Text>
+              <View style={styles.inputWithIcon}>
+                <TextInput
+                  style={[styles.input, { flex: 1, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                  value={formData.address}
+                  onChangeText={(t) => setFormData({ ...formData, address: t })}
+                  placeholder="Enter complete address..."
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[styles.micBtn, { alignSelf: 'flex-start', marginTop: 10 }, listeningField === 'address' && styles.micBtnActive]}
+                  onPress={() => listeningField === 'address' ? stopListening() : startListening('address')}
+                >
+                  {listeningField === 'address' ? <MicOff size={20} color={Colors.error} /> : <Mic size={20} color={Colors.primary} />}
+                </TouchableOpacity>
               </View>
             </View>
 
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setFormData({ ...formData, isActive: !formData.isActive })}
+            >
+              <View style={[styles.checkbox, formData.isActive && styles.checkboxActive]}>
+                {formData.isActive && <CheckCircle2 size={16} color={Colors.surface} />}
+              </View>
+              <Text style={styles.checkboxLabel}>Active Status</Text>
+            </TouchableOpacity>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Profile Photo</Text>
+            </View>
+            <View style={styles.photoUploadRow}>
+              <TouchableOpacity style={styles.photoPicker} onPress={() => pickImage('profile')}>
+                {profilePhoto ? (
+                  <View style={styles.photoPreviewContainer}>
+                    <Text style={styles.photoPreviewText}>Photo Selected ✓</Text>
+                    <CheckCircle2 size={24} color={Colors.success} />
+                  </View>
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Camera size={32} color={Colors.textSecondary} />
+                    <Text style={styles.photoPlaceholderText}>Upload Profile Photo</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* ── SECTION 2: Work Details ── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Work Details</Text>
+            </View>
+
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Category</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.radioGroup}>
+              <Text style={styles.label}>Category <Text style={{ color: Colors.error }}>*</Text></Text>
+              <View style={styles.radioGroup}>
                 {['skilled', 'semiSkilled', 'unSkilled'].map(c => (
                   <TouchableOpacity key={c} onPress={() => setFormData({ ...formData, category: c })} style={[styles.radioBtn, formData.category === c && styles.radioBtnActive]}>
                     <Text style={[styles.radioText, formData.category === c && styles.radioTextActive]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
             </View>
 
             <View style={styles.inputGroup}>
@@ -359,18 +627,10 @@ export default function StaffScreen({ navigation }: any) {
                 </Text>
                 <ChevronDown size={18} color={Colors.textSecondary} />
               </TouchableOpacity>
-
               {showDesignation && (
                 <View style={styles.dropdownMenu}>
-                  {['Security Officer', 'Ladies Guard', 'Security Guard', 'Supervisor', 'Other'].map(d => (
-                    <TouchableOpacity 
-                      key={d} 
-                      style={styles.dropdownItem} 
-                      onPress={() => {
-                        setFormData({ ...formData, designation: d });
-                        setShowDesignation(false);
-                      }}
-                    >
+                  {['labour', 'supervisor', 'driver'].map(d => (
+                    <TouchableOpacity key={d} style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, designation: d }); setShowDesignation(false); }}>
                       <Text style={[styles.dropdownItemText, formData.designation === d && styles.dropdownItemTextActive]}>{d}</Text>
                     </TouchableOpacity>
                   ))}
@@ -378,11 +638,79 @@ export default function StaffScreen({ navigation }: any) {
               )}
             </View>
 
-            <View style={[styles.inputGroup, { marginBottom: 60 }]}>
-              <Text style={styles.label}>Department</Text>
-              <TextInput style={styles.input} value={formData.department} onChangeText={(t) => setFormData({ ...formData, department: t })} placeholder="Administration" />
+            <View style={styles.rowInputs}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
+                <Text style={styles.label}>Department</Text>
+                <TextInput style={styles.input} value={formData.department} onChangeText={(t) => setFormData({ ...formData, department: t })} placeholder="Administration" />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
+                <Text style={styles.label}>Hourly Rate (₹)</Text>
+                <TextInput style={styles.input} value={formData.hourlyRate} onChangeText={(t) => setFormData({ ...formData, hourlyRate: t })} placeholder="0.00" keyboardType="numeric" />
+              </View>
             </View>
 
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Shift</Text>
+              <View style={styles.radioGroup}>
+                {['day', 'night'].map(s => (
+                  <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
+                    <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>{s === 'day' ? '☀️ Day (7AM–7PM)' : '🌙 Night (7PM–7AM)'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* ── SECTION 3: Bank & Documents ── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Bank & IDs</Text>
+            </View>
+
+            <View style={styles.rowInputs}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
+                <Text style={styles.label}>UAN</Text>
+                <TextInput style={styles.input} value={formData.uan} onChangeText={(t) => setFormData({ ...formData, uan: t })} placeholder="Universal Account No" />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
+                <Text style={styles.label}>ESIC</Text>
+                <TextInput style={styles.input} value={formData.esic} onChangeText={(t) => setFormData({ ...formData, esic: t })} placeholder="ESIC No" />
+              </View>
+            </View>
+
+            <View style={styles.rowInputs}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
+                <Text style={styles.label}>Account No</Text>
+                <TextInput style={styles.input} value={formData.accountNo} onChangeText={(t) => setFormData({ ...formData, accountNo: t })} placeholder="Bank Account Number" keyboardType="numeric" />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
+                <Text style={styles.label}>IFSC</Text>
+                <TextInput style={styles.input} value={formData.ifsc} onChangeText={(t) => setFormData({ ...formData, ifsc: t })} placeholder="Bank IFSC Code" autoCapitalize="characters" />
+              </View>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Documents</Text>
+            </View>
+            <View style={styles.documentRow}>
+              <View style={styles.docItem}>
+                <Text style={styles.docLabel}>Aadhaar Front</Text>
+                <TouchableOpacity style={styles.docPicker} onPress={() => pickImage('aFront')}>
+                  {aadhaarFront ? <CheckCircle2 size={24} color={Colors.success} /> : <FileText size={24} color={Colors.textSecondary} />}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.docItem}>
+                <Text style={styles.docLabel}>Aadhaar Back</Text>
+                <TouchableOpacity style={styles.docPicker} onPress={() => pickImage('aBack')}>
+                  {aadhaarBack ? <CheckCircle2 size={24} color={Colors.success} /> : <FileText size={24} color={Colors.textSecondary} />}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.docItem}>
+                <Text style={styles.docLabel}>PAN Card</Text>
+                <TouchableOpacity style={styles.docPicker} onPress={() => pickImage('pan')}>
+                  {panCard ? <CheckCircle2 size={24} color={Colors.success} /> : <FileText size={24} color={Colors.textSecondary} />}
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={{ height: 40 }} />
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -691,5 +1019,137 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.surface,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  inputWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  micBtn: {
+    padding: 10,
+    marginLeft: 8,
+    backgroundColor: '#f1f5f9',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  micBtnActive: {
+    backgroundColor: '#fee2e2',
+    borderColor: Colors.error,
+  },
+  activeTab: {
+    borderBottomWidth: 3,
+    borderBottomColor: Colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  activeTabText: {
+    color: Colors.primary,
+  },
+  sectionHeader: {
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+    marginTop: Spacing.sm,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  checkboxActive: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  checkboxLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  photoUploadRow: {
+    marginBottom: Spacing.xl,
+  },
+  photoPicker: {
+    height: 120,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPlaceholder: {
+    alignItems: 'center',
+  },
+  photoPlaceholderText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  photoPreviewContainer: {
+    alignItems: 'center',
+  },
+  photoPreviewText: {
+    marginBottom: 8,
+    fontSize: 14,
+    color: Colors.success,
+    fontWeight: '700',
+  },
+  documentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+  },
+  docItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  docLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  docPicker: {
+    width: 60,
+    height: 60,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

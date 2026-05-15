@@ -1,6 +1,8 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
+import { authService } from '../services/authService';
+import { notificationService } from '../services/notificationService';
 
 interface User {
   _id: string;
@@ -75,6 +77,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       setToken(newToken);
       setUser(userData);
+
+      // Explicitly register device token using the dedicated API after token is saved
+      const fcmToken = await notificationService.getTokenOnly();
+      if (fcmToken) {
+        console.log('[AuthContext] Registering Device Token:', fcmToken);
+        await authService.registerDeviceToken(fcmToken).catch(e => console.log('[AuthContext] Failed to register token', e));
+      }
     } catch (e) {
       console.error('Failed to save auth data', e);
     }
@@ -82,6 +91,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      const fcmToken = await notificationService.getTokenOnly();
+      if (fcmToken) {
+        await authService.removeDeviceToken(fcmToken).catch(e => console.log('Failed to remove token from server', e));
+      }
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userData');
       setToken(null);

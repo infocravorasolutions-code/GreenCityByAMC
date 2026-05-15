@@ -38,6 +38,10 @@
 	<string>Green City AMC requires access to your location to mark attendance at your current job site.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Green City AMC requires access to your camera to take a selfie for identity verification during attendance marking.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Green City AMC requires access to your microphone for voice-to-text input to help you fill out employee details quickly.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Green City AMC uses speech recognition to convert your voice into text for faster data entry.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

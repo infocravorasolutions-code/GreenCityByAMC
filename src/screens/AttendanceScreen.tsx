@@ -160,10 +160,27 @@ export default function AttendanceScreen() {
         // Get all records for this employee from Map (O(1) lookup)
         const empRecords = attendanceMap.get(emp._id) || [];
 
-        // Sort them by stepIn date descending to get the absolute most recent one
-        empRecords.sort((a: any, b: any) => new Date(b.stepIn || 0).getTime() - new Date(a.stepIn || 0).getTime());
+        // Sort them by date descending to get the absolute most recent one. 
+        // Sort them by date descending to get the absolute most recent one. 
+        empRecords.sort((a: any, b: any) => {
+          let timeB = new Date(b.date || b.createdAt || b.shiftFirstStepIn || 0).getTime();
+          let timeA = new Date(a.date || a.createdAt || a.shiftFirstStepIn || 0).getTime();
+          
+          if (isNaN(timeB)) timeB = 0;
+          if (isNaN(timeA)) timeA = 0;
+          
+          return timeB - timeA;
+        });
 
         const latestRecord = empRecords[0];
+
+        if (emp.name?.includes('security') || emp.name?.includes('1')) {
+           console.log(`\n--- DEBUG FOR ${emp.name} ---`);
+           empRecords.forEach((r: any, idx: number) => {
+             console.log(`Record ${idx}: date=${r.date}, createdAt=${r.createdAt}, stepIn=${r.stepIn}, stepOut=${r.stepOut}`);
+           });
+           console.log(`Chosen latestRecord: stepIn=${latestRecord?.stepIn}, isWorking=${!!latestRecord?.stepIn}`);
+        }
 
         let hasCompletedShift = false;
         if (latestRecord && latestRecord.stepOut && latestRecord.stepIn) {
@@ -177,8 +194,16 @@ export default function AttendanceScreen() {
           ...emp,
           attendance: latestRecord,
           // Source of truth: The absolute newest attendance record overrides any stale backend flag.
-          // If no record exists for today/yesterday, they are strictly NOT working.
-          isWorking: latestRecord ? !latestRecord.stepOut : false,
+          // Only mark as working if stepIn is present, stepOut is empty, AND the record is from today.
+          // (If they forgot to step out yesterday, we don't want them stuck working today).
+          isWorking: latestRecord ? (() => {
+             const hasStepIn = !!latestRecord.stepIn && latestRecord.stepIn !== 'null';
+             const hasStepOut = !!latestRecord.stepOut && latestRecord.stepOut !== 'null';
+             const rDateStr = getISTDateStr(new Date(latestRecord.date || latestRecord.createdAt || latestRecord.stepIn || Date.now()));
+             
+             // If it's today's record, or they started a shift late yesterday that is still active
+             return hasStepIn && !hasStepOut && (rDateStr === todayStr || rDateStr === yesterdayStr);
+          })() : false,
           hasCompletedShift
         };
       });
@@ -274,8 +299,17 @@ export default function AttendanceScreen() {
       }
     }
 
+    // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
+    const fallbackTimeout = setTimeout(() => {
+      setFetchingLocation(false);
+      if (locationText === 'Locating automatically...') {
+         setLocationText('');
+      }
+    }, 8000);
+
     Geolocation.getCurrentPosition(
       async (position) => {
+        clearTimeout(fallbackTimeout);
         const { latitude, longitude } = position.coords;
         setRawCoords({ lat: latitude, lng: longitude });
         try {
@@ -293,6 +327,7 @@ export default function AttendanceScreen() {
         setFetchingLocation(false);
       },
       (error) => {
+        clearTimeout(fallbackTimeout);
         console.warn(`[GPS ERROR] ${error.message}`);
         setLocationText(''); // Failed, let them type
         setFetchingLocation(false);
@@ -337,7 +372,7 @@ export default function AttendanceScreen() {
   const handleSubmission = async () => {
     if (!selectedEmployee) return;
 
-    const isSteppingIn = !(selectedEmployee.isWorking || (selectedEmployee.attendance && !selectedEmployee.attendance.stepOut));
+    const isSteppingIn = !selectedEmployee.isWorking;
 
     if (!photo) {
       Alert.alert('Photo Required', 'Please tap the camera box to capture a selfie.');
@@ -442,10 +477,9 @@ export default function AttendanceScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.employeeName}>{item.name}</Text>
                 <Text style={styles.employeeCode}>{item.empCode}</Text>
-                {/* Debug info if needed: <Text style={{fontSize: 10}}>{item.isWorking ? 'API: Working' : 'API: Idle'}</Text> */}
               </View>
               {/* Prioritize active attendance record over isWorking flag if available */}
-              {(item.isWorking || (item.attendance && !item.attendance.stepOut)) ? (
+              {item.isWorking ? (
                 <View style={styles.stepOutAction}>
                   <Text style={styles.stepActionText}>STEP OUT</Text>
                 </View>
@@ -532,10 +566,9 @@ export default function AttendanceScreen() {
                     <View style={styles.locationInputWrapper}>
                       <TextInput
                         style={styles.input}
-                        placeholder="Enter location or leave empty for auto-detect"
+                        placeholder="Enter location manually..."
                         value={locationText}
                         onChangeText={setLocationText}
-                        editable={!fetchingLocation}
                       />
                       {fetchingLocation && (
                         <ActivityIndicator size="small" color={Colors.primary} style={styles.locationLoader} />

@@ -16,10 +16,11 @@ import { Mail, Lock, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-nativ
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+import { notificationService } from '../services/notificationService';
 
 const { height } = Dimensions.get('window');
 
-type LoginType = 'employee' | 'manager';
+type LoginType = 'employee' | 'manager' | 'sso';
 
 export default function LoginScreen({ navigation }: any) {
   const [loginType, setLoginType] = useState<LoginType>('employee');
@@ -49,7 +50,10 @@ export default function LoginScreen({ navigation }: any) {
       let response;
       if (loginType === 'employee') {
         response = await authService.employeeLogin({ mobile, password });
+      } else if (loginType === 'manager') {
+        response = await authService.login({ email, password });
       } else {
+        // SSO login uses the same endpoint as manager
         response = await authService.login({ email, password });
       }
       
@@ -57,7 +61,9 @@ export default function LoginScreen({ navigation }: any) {
 
       if (response && response.token) {
         await login(response.token, response.user);
-        navigation.replace('Main');
+        // DO NOT manually navigate — AppNavigator automatically re-renders
+        // to the correct screen (HOME/SsoDashboard/Main) based on role
+        // when the token is set in AuthContext.
       } else {
         throw new Error('Invalid response from server');
       }
@@ -110,16 +116,25 @@ export default function LoginScreen({ navigation }: any) {
                 Manager
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, loginType === 'sso' && styles.toggleButtonActive]}
+              onPress={() => setLoginType('sso')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, loginType === 'sso' && styles.toggleTextActive]}>
+                SSO
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {loginType === 'manager' ? (
+          {loginType === 'manager' || loginType === 'sso' ? (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email Address</Text>
               <View style={styles.inputWrapper}>
                 <Mail size={20} color={Colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="manager@greencity.gov"
+                  placeholder={loginType === 'manager' ? "manager@greencity.gov" : "sso@greencity.gov"}
                   placeholderTextColor={Colors.textSecondary}
                   value={email}
                   onChangeText={setEmail}

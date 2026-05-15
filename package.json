@@ -10,9 +10,13 @@
     "test": "jest"
   },
   "dependencies": {
+    "@ascendtis/react-native-voice-to-text": "^0.3.2",
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^3.0.2",
     "@react-native-community/datetimepicker": "^9.1.0",
     "@react-native-community/geolocation": "^3.4.0",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/messaging": "^24.0.0",
     "@react-native/new-app-screen": "0.85.1",
     "@react-navigation/bottom-tabs": "^7.15.9",
     "@react-navigation/native": "^7.2.2",
@@ -21,13 +25,17 @@
     "lucide-react-native": "^1.8.0",
     "react": "19.2.3",
     "react-native": "0.85.1",
+    "react-native-chart-kit": "^6.12.2",
+    "react-native-device-info": "^14.0.1",
     "react-native-gesture-handler": "^2.31.1",
     "react-native-image-picker": "^7.2.3",
+    "react-native-maps": "^1.27.2",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
     "react-native-svg": "^15.15.4",
-    "react-native-device-info": "^14.0.1",
+    "react-native-tts": "^4.1.1",
+    "react-native-webview": "^13.16.1",
     "react-native-worklets": "^0.8.1"
   },
   "devDependencies": {

@@ -8,12 +8,12 @@ import { AuthProvider } from './src/context/AuthContext';
 import UpdateScreen from './src/screens/UpdateScreen';
 import { checkForUpdate, UpdateDecision } from './src/services/appSettingsService';
 import SplashScreen from './src/screens/SplashScreen';
+import { notificationService } from './src/services/notificationService';
 
 function App(): React.JSX.Element {
   const [updateDecision, setUpdateDecision] = React.useState<UpdateDecision | null>(null);
   const [updateChecked, setUpdateChecked] = React.useState(false);
   const [optionalPromptShown, setOptionalPromptShown] = React.useState(false);
-
   React.useEffect(() => {
     const requestPermissions = async () => {
       if (Platform.OS === 'android') {
@@ -27,8 +27,18 @@ function App(): React.JSX.Element {
           console.warn(err);
         }
       }
+      
+      // Notification setup
+      const hasPermission = await notificationService.requestUserPermission();
+      if (hasPermission) {
+        await notificationService.getFCMToken();
+        await notificationService.createDefaultChannel();
+      }
     };
     requestPermissions();
+
+    const unsubscribe = notificationService.setupListeners();
+    return () => unsubscribe();
   }, []);
 
   React.useEffect(() => {

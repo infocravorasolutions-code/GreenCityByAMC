@@ -5,6 +5,19 @@ import LoginScreen from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
 import { useAuth } from '../context/AuthContext';
 
+// Import Screens
+import EmployeeDashboardScreen from '../screens/EmployeeDashboardScreen';
+import EmployeeAttendanceScreen from '../screens/EmployeeAttendanceScreen';
+import SsoDashboardScreen from '../screens/SsoDashboardScreen';
+import SsoCcrListScreen from '../screens/SsoCcrListScreen';
+import SsoCreateCcrScreen from '../screens/SsoCreateCcrScreen';
+import SsoCcrDetailScreen from '../screens/SsoCcrDetailScreen';
+import SsoLiveMapScreen from '../screens/SsoLiveMapScreen';
+import SsoAnalyticsScreen from '../screens/SsoAnalyticsScreen';
+import SsoHistoryScreen from '../screens/SsoHistoryScreen';
+
+import ManagerCcrListScreen from '../screens/ManagerCcrListScreen';
+
 const Stack = createStackNavigator();
 
 export default function AppNavigator() {
@@ -16,6 +29,7 @@ export default function AppNavigator() {
   }
 
   const isEmployee = user?.role === 'employee';
+  const isSso = user?.role === 'sso';
 
   return (
     <Stack.Navigator
@@ -26,11 +40,24 @@ export default function AppNavigator() {
       {token ? (
         isEmployee ? (
           <Stack.Group>
-            <Stack.Screen name="HOME" component={require('../screens/EmployeeDashboardScreen').default} />
-            <Stack.Screen name="ATTENDANCE" component={require('../screens/EmployeeAttendanceScreen').default} />
+            <Stack.Screen name="HOME" component={EmployeeDashboardScreen} />
+            <Stack.Screen name="ATTENDANCE" component={EmployeeAttendanceScreen} />
+          </Stack.Group>
+        ) : isSso ? (
+          <Stack.Group>
+            <Stack.Screen name="SsoDashboard" component={SsoDashboardScreen} />
+            <Stack.Screen name="SsoCcrList" component={SsoCcrListScreen} />
+            <Stack.Screen name="SsoCreateCcr" component={SsoCreateCcrScreen} />
+            <Stack.Screen name="SsoCcrDetail" component={SsoCcrDetailScreen} />
+            <Stack.Screen name="SsoLiveMap" component={SsoLiveMapScreen} />
+            <Stack.Screen name="SsoAnalytics" component={SsoAnalyticsScreen} />
+            <Stack.Screen name="SsoHistory" component={SsoHistoryScreen} />
           </Stack.Group>
         ) : (
-          <Stack.Screen name="Main" component={TabNavigator} />
+          <Stack.Group>
+            <Stack.Screen name="Main" component={TabNavigator} />
+            <Stack.Screen name="ManagerCcrList" component={ManagerCcrListScreen} />
+          </Stack.Group>
         )
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

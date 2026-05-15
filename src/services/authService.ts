@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import api from './api';
 
 export const authService = {
@@ -26,6 +27,21 @@ export const authService = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return response.data;
+  },
+
+  registerDeviceToken: async (token: string) => {
+    const response = await api.post('/auth/device-token', {
+      token,
+      platform: Platform.OS === 'ios' ? 'ios' : 'android'
+    });
+    return response.data;
+  },
+
+  removeDeviceToken: async (token: string) => {
+    const response = await api.delete('/auth/device-token', {
+      data: { token }
     });
     return response.data;
   },

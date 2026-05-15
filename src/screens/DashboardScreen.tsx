@@ -8,7 +8,8 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
-  SafeAreaView
+  SafeAreaView,
+  RefreshControl
 } from 'react-native';
 import {
   Users,
@@ -16,7 +17,7 @@ import {
   BarChart3,
   LogOut,
   ChevronRight,
-  Clock
+  AlertTriangle
 } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
@@ -24,20 +25,21 @@ import { managerService } from '../services/managerService';
 
 const { width } = Dimensions.get('window');
 
-const ActionTile = ({ title, icon: Icon, color, onPress, description }: any) => (
+const MassiveActionCard = ({ title, subTitle, gujaratiText, icon: Icon, color, onPress }: any) => (
   <TouchableOpacity
-    style={[styles.actionTile, { borderLeftColor: color }]}
+    style={[styles.massiveCard, { borderBottomColor: color }]}
     onPress={onPress}
-    activeOpacity={0.7}
+    activeOpacity={0.8}
   >
-    <View style={[styles.tileIconContainer, { backgroundColor: `${color}15` }]}>
-      <Icon size={32} color={color} />
+    <View style={[styles.iconCircle, { backgroundColor: `${color}15` }]}>
+      <Icon size={40} color={color} />
     </View>
-    <View style={styles.tileTextContainer}>
-      <Text style={styles.tileTitle}>{title}</Text>
-      <Text style={styles.tileDescription}>{description}</Text>
+    <View style={styles.cardContent}>
+      <Text style={[styles.gujaratiText, { color }]}>{gujaratiText}</Text>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <Text style={styles.cardSubTitle}>{subTitle}</Text>
     </View>
-    <ChevronRight size={24} color={Colors.textSecondary} />
+    <ChevronRight size={32} color={Colors.border} />
   </TouchableOpacity>
 );
 
@@ -45,38 +47,33 @@ export default function DashboardScreen({ navigation }: any) {
   const { user, logout } = useAuth();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchSummary();
   }, []);
 
   const fetchSummary = async () => {
-    console.log('[Dashboard] Fetching summary for user:', user?.email, '| Role:', user?.role);
     try {
       const data = await managerService.getSummary();
-      console.log('[Dashboard] Received summary data:', JSON.stringify(data));
       if (data && data.success) {
         setSummary(data.dashboard);
-      } else {
-        console.warn('[Dashboard] Summary data missing success flag or empty:', data);
       }
     } catch (error: any) {
       console.error('[Dashboard] Failed to fetch summary:', error);
-      if (error.response?.status === 403) {
-        setTimeout(() => {
-          Alert.alert(
-            'Permission Denied',
-            'Your account does not have Manager permissions on this production server.'
-          );
-        }, 100);
-      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchSummary();
+  };
+
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to sign out?', [
+    Alert.alert('Logout (લોગઆઉટ)', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
@@ -102,55 +99,70 @@ export default function DashboardScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.topBar}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.greeting}>Welcome,</Text>
-            <Text style={styles.userName}>{user?.fullName || 'Manager'}</Text>
-          </View>
-          <TouchableOpacity style={styles.logoutRightBtn} onPress={handleLogout}>
-            <LogOut size={22} color={Colors.error} />
-          </TouchableOpacity>
+      <View style={styles.topBar}>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.greeting}>સ્વાગત છે (Welcome),</Text>
+          <Text style={styles.userName}>{user?.fullName || 'Manager'}</Text>
         </View>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <LogOut size={24} color={Colors.error} />
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{summary?.totalEmployees || 0}</Text>
-            <Text style={styles.summaryLabel}>STAFF</Text>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+        }
+      >
+        
+        {/* Massive Stats Display */}
+        <View style={styles.statsContainer}>
+          <View style={[styles.statBox, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+            <Text style={[styles.statNumber, { color: '#1d4ed8' }]}>{summary?.totalEmployees || 0}</Text>
+            <Text style={styles.statLabelGu}>સ્ટાફ (Staff)</Text>
           </View>
-          <View style={[styles.summaryItem, { borderLeftWidth: 1, borderLeftColor: Colors.border }]}>
-            <Text style={[styles.summaryValue, { color: Colors.success }]}>{summary?.attendanceToday || 0}</Text>
-            <Text style={styles.summaryLabel}>PRESENT</Text>
+          <View style={[styles.statBox, { backgroundColor: '#ecfdf5', borderColor: '#bbf7d0' }]}>
+            <Text style={[styles.statNumber, { color: '#15803d' }]}>{summary?.attendanceToday || 0}</Text>
+            <Text style={styles.statLabelGu}>હાજર (Present)</Text>
           </View>
         </View>
 
         <View style={styles.actionsContainer}>
-          <ActionTile
+          <MassiveActionCard
             title="ATTENDANCE"
-            description="Mark In / Mark Out"
+            subTitle="Mark In / Mark Out"
+            gujaratiText="હાજરી ભરો"
             icon={CalendarCheck}
             color={Colors.success}
             onPress={() => navigation.navigate('STEP IN/OUT')}
           />
-          <ActionTile
-            title="MY EMPLOYEES"
-            description="View & Manage Staff"
+          
+          <MassiveActionCard
+            title="MY TASKS"
+            subTitle="View CCR Tickets"
+            gujaratiText="મારા કામ"
+            icon={AlertTriangle}
+            color={Colors.error}
+            onPress={() => navigation.navigate('ManagerCcrList')}
+          />
+
+          <MassiveActionCard
+            title="MY STAFF"
+            subTitle="View Employees"
+            gujaratiText="મારો સ્ટાફ"
             icon={Users}
             color={Colors.primary}
             onPress={() => navigation.navigate('MY STAFF')}
           />
-          <ActionTile
-            title="HISTORY"
-            description="View Past Attendance"
-            icon={Clock}
-            color={Colors.warning}
-            onPress={() => navigation.navigate('REPORTS')}
-          />
-          <ActionTile
+
+          <MassiveActionCard
             title="REPORTS"
-            description="Download Daily Reports"
+            subTitle="History & Data"
+            gujaratiText="રિપોર્ટ્સ જુઓ"
             icon={BarChart3}
-            color={Colors.secondary}
+            color={Colors.warning}
             onPress={() => navigation.navigate('REPORTS')}
           />
         </View>
@@ -166,8 +178,11 @@ export default function DashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    top: 30,
-    backgroundColor: Colors.background,
+    backgroundColor: '#f8fafc',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   topBar: {
     flexDirection: 'row',
@@ -176,97 +191,106 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingTop: Spacing.xl,
     backgroundColor: Colors.surface,
-  },
-  logoutRightBtn: {
-    padding: 8,
-    backgroundColor: '#fef2f2',
-    borderRadius: BorderRadius.sm,
+    ...Shadows.soft,
+    zIndex: 10,
   },
   headerTextWrap: {
     flex: 1,
   },
   greeting: {
-    fontSize: Typography.label,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: Typography.header,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  logoutButton: {
-    padding: Spacing.sm,
-  },
-  centerContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    paddingVertical: Spacing.lg,
-    marginBottom: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryValue: {
-    fontSize: Typography.title,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  summaryLabel: {
-    fontSize: Typography.small,
+    fontSize: 16,
     color: Colors.textSecondary,
     fontWeight: '700',
-    marginTop: 4,
+    marginBottom: 4,
+  },
+  userName: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: Colors.text,
+  },
+  logoutBtn: {
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    padding: Spacing.md,
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    ...Shadows.soft,
+  },
+  statNumber: {
+    fontSize: 48,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  statLabelGu: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.textSecondary,
   },
   actionsContainer: {
     padding: Spacing.md,
   },
-  actionTile: {
+  massiveCard: {
     backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.md,
-    borderLeftWidth: 8,
+    marginBottom: Spacing.lg,
+    borderBottomWidth: 6,
     ...Shadows.card,
   },
-  tileIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.sm,
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.lg,
   },
-  tileTextContainer: {
+  cardContent: {
     flex: 1,
   },
-  tileTitle: {
-    fontSize: Typography.header,
+  gujaratiText: {
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  cardTitle: {
+    fontSize: 18,
     fontWeight: '800',
     color: Colors.text,
+    marginBottom: 2,
   },
-  tileDescription: {
-    fontSize: Typography.label,
+  cardSubTitle: {
+    fontSize: 14,
     color: Colors.textSecondary,
-    marginTop: 2,
+    fontWeight: '600',
   },
   footer: {
-    padding: Spacing.xxl,
+    padding: Spacing.xl,
     alignItems: 'center',
   },
   footerText: {
-    fontSize: Typography.small,
+    fontSize: 14,
     color: Colors.textSecondary,
+    fontWeight: '700',
     opacity: 0.5,
   },
 });

@@ -40,4 +40,9 @@ export const managerService = {
     const response = await api.delete(`/manager/employees/${id}`);
     return response.data;
   },
+
+  getTickets: async () => {
+    const response = await api.get('/manager/ccr');
+    return response.data.items;
+  },
 };
