@@ -1,4 +1,5 @@
 import api from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface CcrTicket {
   _id: string;
@@ -13,26 +14,45 @@ export interface CcrTicket {
   createdAt: string;
 }
 
+const getRolePath = async (): Promise<string> => {
+  try {
+    const userDataStr = await AsyncStorage.getItem('userData');
+    if (userDataStr) {
+      const user = JSON.parse(userDataStr);
+      if (user && user.role === 'supervisor') {
+        return '/supervisor';
+      }
+    }
+  } catch (e) {
+    console.error('[ssoService] Failed to read role for dynamic prefix:', e);
+  }
+  return '/sso';
+};
+
 export const ssoService = {
   getTickets: async (today?: boolean) => {
-    const response = await api.get('/sso/ccr', { params: { today: today ? 'true' : undefined } });
+    const path = await getRolePath();
+    const response = await api.get(`${path}/ccr`, { params: { today: today ? 'true' : undefined } });
     return response.data.ccrs as CcrTicket[];
   },
 
   getVehicles: async () => {
-    const response = await api.get('/sso/vehicles');
+    const path = await getRolePath();
+    const response = await api.get(`${path}/vehicles`);
     return response.data.vehicles;
   },
 
   getTicketById: async (id: string) => {
-    const response = await api.get(`/sso/ccr/${id}`);
+    const path = await getRolePath();
+    const response = await api.get(`${path}/ccr/${id}`);
     return response.data.ccr as CcrTicket;
   },
 
   createTicket: async (data: any) => {
+    const path = await getRolePath();
     // If no image is present, send as standard JSON
     if (!data.image) {
-      const response = await api.post('/sso/ccr', {
+      const response = await api.post(`${path}/ccr`, {
         type: data.type,
         title: data.title,
         description: data.description,
@@ -59,44 +79,51 @@ export const ssoService = {
       }
     });
 
-    const response = await api.post('/sso/ccr', formData, {
+    const response = await api.post(`${path}/ccr`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data.ccr;
   },
 
   updateTicketStatus: async (ticketId: string, status: 'pending' | 'resolved') => {
-    const response = await api.put(`/sso/ccr/${ticketId}`, { status });
+    const path = await getRolePath();
+    const response = await api.put(`${path}/ccr/${ticketId}`, { status });
     return response.data.ccr;
   },
 
   getLiveLocations: async () => {
-    const response = await api.get('/sso/today/vehicles');
+    const path = await getRolePath();
+    const response = await api.get(`${path}/today/vehicles`);
     return response.data.items || response.data.locations || response.data.vehicles || [];
   },
 
   getTripAnalytics: async () => {
-    const response = await api.get('/sso/analytics/trips');
+    const path = await getRolePath();
+    const response = await api.get(`${path}/analytics/trips`);
     return response.data.analytics;
   },
 
-  getVehicleTrip: async (vehicleId: string) => {
-    const response = await api.get(`/sso/today/vehicles/${vehicleId}/trip`);
+  getVehicleTrip: async (vehicleId: string, date?: string) => {
+    const path = await getRolePath();
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/trip`, { params: { date } });
     return response.data;
   },
 
   getHistory: async (params?: { startDate?: string; endDate?: string; type?: string }) => {
-    const response = await api.get('/sso/history', { params });
+    const path = await getRolePath();
+    const response = await api.get(`${path}/history`, { params });
     return response.data.history || [];
   },
 
-  getVehicleHistory: async (vehicleId: string, limit: number = 200) => {
-    const response = await api.get(`/sso/today/vehicles/${vehicleId}/history`, { params: { limit } });
+  getVehicleHistory: async (vehicleId: string, date?: string, limit: number = 200) => {
+    const path = await getRolePath();
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/history`, { params: { limit, date } });
     return response.data;
   },
 
-  getVehicleSummary: async (vehicleId: string) => {
-    const response = await api.get(`/sso/today/vehicles/${vehicleId}/summary`);
+  getVehicleSummary: async (vehicleId: string, date?: string) => {
+    const path = await getRolePath();
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/summary`, { params: { date } });
     return response.data;
   },
 };

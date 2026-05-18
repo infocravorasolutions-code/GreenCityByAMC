@@ -313,7 +313,7 @@ export default function AttendanceScreen() {
         const { latitude, longitude } = position.coords;
         setRawCoords({ lat: latitude, lng: longitude });
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, {
+          const res = await fetch(`https://us1.locationiq.com/v1/reverse?key=pk.26a2af4750035155566642c0210a9d2b&lat=${latitude}&lon=${longitude}&format=json`, {
             headers: {
               'User-Agent': 'GreenCityAMC-AttendanceApp/1.0 (Mobile)',
               'Accept': 'application/json'

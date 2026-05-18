@@ -29,7 +29,8 @@ export default function AppNavigator() {
   }
 
   const isEmployee = user?.role === 'employee';
-  const isSso = user?.role === 'sso';
+  const isSsoOrSupervisor = user?.role === 'sso' || user?.role === 'supervisor';
+  const isManager = user?.role === 'manager';
 
   return (
     <Stack.Navigator
@@ -43,7 +44,7 @@ export default function AppNavigator() {
             <Stack.Screen name="HOME" component={EmployeeDashboardScreen} />
             <Stack.Screen name="ATTENDANCE" component={EmployeeAttendanceScreen} />
           </Stack.Group>
-        ) : isSso ? (
+        ) : isSsoOrSupervisor ? (
           <Stack.Group>
             <Stack.Screen name="SsoDashboard" component={SsoDashboardScreen} />
             <Stack.Screen name="SsoCcrList" component={SsoCcrListScreen} />
@@ -53,11 +54,14 @@ export default function AppNavigator() {
             <Stack.Screen name="SsoAnalytics" component={SsoAnalyticsScreen} />
             <Stack.Screen name="SsoHistory" component={SsoHistoryScreen} />
           </Stack.Group>
-        ) : (
+        ) : isManager ? (
           <Stack.Group>
             <Stack.Screen name="Main" component={TabNavigator} />
             <Stack.Screen name="ManagerCcrList" component={ManagerCcrListScreen} />
           </Stack.Group>
+        ) : (
+          // Fallback: show login screen if role is unrecognised
+          <Stack.Screen name="Login" component={LoginScreen} />
         )
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

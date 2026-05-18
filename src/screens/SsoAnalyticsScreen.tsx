@@ -6,31 +6,67 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { ArrowLeft, Clock, MapPin, PlayCircle, PauseCircle } from 'lucide-react-native';
+import { ArrowLeft, Truck, PlayCircle, PauseCircle, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { ssoService } from '../services/ssoService';
+import { useAuth } from '../context/AuthContext';
 
-const { width } = Dimensions.get('window');
-
-const formatSeconds = (totalSeconds: number) => {
-  if (!totalSeconds) return '0m';
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+const formatTripTime = (timeString?: string) => {
+  if (!timeString) return '--:--';
+  try {
+    const d = new Date(timeString);
+    if (isNaN(d.getTime())) return '--:--';
+    
+    // Format to a clean, easy-to-read localized time: e.g. "09:30 AM"
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return '--:--';
+  }
 };
 
 export default function SsoAnalyticsScreen({ navigation }: any) {
+  const { user } = useAuth();
+  const isSupervisor = user?.role === 'supervisor';
+  
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [tripData, setTripData] = useState<any>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [loadingTrip, setLoadingTrip] = useState(false);
   const webViewRef = useRef<WebView>(null);
+
+  const formatDisplayDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString(undefined, { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleNextDay = () => {
+    if (selectedDate >= todayStr) return;
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
 
   useEffect(() => {
     fetchVehicles();
@@ -40,7 +76,7 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
     if (selectedVehicleId) {
       fetchTripData(selectedVehicleId);
     }
-  }, [selectedVehicleId]);
+  }, [selectedVehicleId, selectedDate]);
 
   const fetchVehicles = async () => {
     try {
@@ -60,12 +96,9 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
     setLoadingTrip(true);
     setTripData(null);
     try {
-      const result = await ssoService.getVehicleTrip(vehicleId);
+      // SSO role strictly loads today's data (no selectedDate parameter passed to prevent 400 error)
+      const result = await ssoService.getVehicleTrip(vehicleId, isSupervisor ? selectedDate : undefined);
       setTripData(result);
-      if (result?.route && result.route.length > 0) {
-        const js = `updateRoute(${JSON.stringify(result.route)})`;
-        webViewRef.current?.injectJavaScript(js);
-      }
     } catch (error) {
       console.error('Error fetching trip data:', error);
     } finally {
@@ -104,7 +137,7 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
           if (startMarker) map.removeLayer(startMarker);
           if (endMarker) map.removeLayer(endMarker);
           
-          currentPolyline = L.polyline(routeData, {color: '#3b82f6', weight: 4}).addTo(map);
+          currentPolyline = L.polyline(routeData, {color: '#4f46e5', weight: 4}).addTo(map);
           
           var startPoint = routeData[0];
           var endPoint = routeData[routeData.length - 1];
@@ -119,27 +152,68 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
     </html>
   `;
 
+  useEffect(() => {
+    if (tripData?.route && tripData.route.length > 0) {
+      const js = `updateRoute(${JSON.stringify(tripData.route)})`;
+      webViewRef.current?.injectJavaScript(js);
+    }
+  }, [tripData]);
+
   if (loadingVehicles) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading Vehicles...</Text>
+        <Text style={styles.loadingText}>Loading vehicles...</Text>
       </View>
     );
   }
 
+  const start = tripData?.summary?.startPoint?.time;
+  const end = tripData?.summary?.endPoint?.time;
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <ArrowLeft size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Trip Analytics</Text>
+        <Text style={styles.headerTitle}>Trip Map</Text>
         <View style={{ width: 24 }} />
       </View>
 
+      {/* Dynamic Date Banner based on Role */}
+      {isSupervisor ? (
+        <View style={styles.dateBanner}>
+          <TouchableOpacity style={styles.dateButton} onPress={handlePrevDay}>
+            <ChevronLeft size={20} color={Colors.primary} />
+            <Text style={styles.dateButtonText}>Prev</Text>
+          </TouchableOpacity>
+
+          <View style={styles.dateCenter}>
+            <Calendar size={18} color={Colors.primary} style={{ marginRight: Spacing.xs }} />
+            <Text style={styles.dateText}>{formatDisplayDate(selectedDate)}</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.dateButton, selectedDate >= todayStr && styles.dateButtonDisabled]} 
+            onPress={handleNextDay}
+            disabled={selectedDate >= todayStr}
+          >
+            <Text style={[styles.dateButtonText, selectedDate >= todayStr && styles.dateButtonTextDisabled]}>Next</Text>
+            <ChevronRight size={20} color={selectedDate >= todayStr ? Colors.textSecondary : Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.staticDateBanner}>
+          <Calendar size={18} color={Colors.primary} style={{ marginRight: Spacing.sm }} />
+          <Text style={styles.staticDateText}>Today • {formatDisplayDate(todayStr)}</Text>
+        </View>
+      )}
+
+      {/* Vehicle Selector Chips */}
       <View style={styles.vehicleSelectorContainer}>
-        <Text style={styles.sectionLabel}>Select Vehicle</Text>
+        <Text style={styles.sectionLabel}>SELECT VEHICLE</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.vehicleList}>
           {vehicles.map(vehicle => {
             const isSelected = vehicle._id === selectedVehicleId;
@@ -150,7 +224,7 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
                 onPress={() => setSelectedVehicleId(vehicle._id)}
               >
                 <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextSelected]}>
-                  {vehicle.name || vehicle.vehicleNo || 'Unknown'}
+                  {vehicle.numberPlate || vehicle.name || 'Unknown'}
                 </Text>
               </TouchableOpacity>
             );
@@ -158,50 +232,47 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
         </ScrollView>
       </View>
 
+      {/* Main Content Area */}
       <View style={{ flex: 1 }}>
         {loadingTrip ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading Trip Data...</Text>
+            <Text style={styles.loadingText}>Loading route & times...</Text>
           </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             
-            {/* KPI Cards */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <View style={[styles.iconBox, { backgroundColor: '#E0F2FE' }]}>
-                  <MapPin size={20} color="#0EA5E9" />
+            {/* Trip Times Card */}
+            <View style={styles.timeCard}>
+              <View style={styles.timeBlock}>
+                <View style={styles.timeLabelContainer}>
+                  <PlayCircle size={18} color="#22C55E" style={{ marginRight: 6 }} />
+                  <Text style={styles.timeLabel}>START TIME</Text>
                 </View>
-                <Text style={styles.statValue}>{tripData?.summary?.totalDistanceKm || 0} km</Text>
-                <Text style={styles.statLabel}>Distance</Text>
+                <Text style={[styles.timeValue, start ? styles.timeActive : styles.timeEmpty]}>
+                  {formatTripTime(start)}
+                </Text>
               </View>
-              <View style={styles.statCard}>
-                <View style={[styles.iconBox, { backgroundColor: '#DCFCE7' }]}>
-                  <PlayCircle size={20} color="#22C55E" />
+
+              <View style={styles.verticalDivider} />
+
+              <View style={styles.timeBlock}>
+                <View style={styles.timeLabelContainer}>
+                  <PauseCircle size={18} color="#EF4444" style={{ marginRight: 6 }} />
+                  <Text style={styles.timeLabel}>END TIME</Text>
                 </View>
-                <Text style={styles.statValue}>{formatSeconds(tripData?.summary?.totalRunningTimeSec)}</Text>
-                <Text style={styles.statLabel}>Running Time</Text>
-              </View>
-              <View style={styles.statCard}>
-                <View style={[styles.iconBox, { backgroundColor: '#FEE2E2' }]}>
-                  <PauseCircle size={20} color="#EF4444" />
-                </View>
-                <Text style={styles.statValue}>{formatSeconds(tripData?.summary?.totalStoppedTimeSec)}</Text>
-                <Text style={styles.statLabel}>Stopped Time</Text>
-              </View>
-              <View style={styles.statCard}>
-                <View style={[styles.iconBox, { backgroundColor: '#FEF9C3' }]}>
-                  <Clock size={20} color="#EAB308" />
-                </View>
-                <Text style={styles.statValue}>{tripData?.summary?.stopsCount || 0}</Text>
-                <Text style={styles.statLabel}>Stops</Text>
+                <Text style={[styles.timeValue, end ? styles.timeActive : styles.timeEmpty]}>
+                  {formatTripTime(end)}
+                </Text>
               </View>
             </View>
 
-            {/* Map Section */}
+            {/* Leaflet WebView Map */}
             <View style={styles.mapContainer}>
-              <Text style={styles.mapTitle}>Route Map</Text>
+              <View style={styles.mapTitleRow}>
+                <Truck size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.mapTitle}>Route & Start/End Points</Text>
+              </View>
               <View style={styles.mapWrapper}>
                 <WebView
                   ref={webViewRef}
@@ -217,6 +288,11 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
                   }}
                 />
               </View>
+              {(!tripData?.route || tripData.route.length === 0) && (
+                <View style={styles.noRouteOverlay}>
+                  <Text style={styles.noRouteText}>No coordinate data recorded for this date.</Text>
+                </View>
+              )}
             </View>
 
           </ScrollView>
@@ -249,6 +325,62 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
   },
+  dateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  staticDateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dateButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: Colors.surface,
+  },
+  dateButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginHorizontal: 4,
+  },
+  dateButtonTextDisabled: {
+    color: Colors.textSecondary,
+  },
+  dateCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  staticDateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
   vehicleSelectorContainer: {
     backgroundColor: Colors.surface,
     paddingVertical: Spacing.md,
@@ -256,11 +388,12 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   sectionLabel: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textSecondary,
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
+    letterSpacing: 1.2,
   },
   vehicleList: {
     paddingHorizontal: Spacing.lg,
@@ -279,7 +412,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   vehicleChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: Colors.textSecondary,
   },
@@ -290,53 +423,70 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingBottom: 40,
   },
-  statsGrid: {
+  timeCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
     alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
     ...Shadows.card,
   },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
+  timeBlock: {
+    flex: 1,
   },
-  statValue: {
+  timeLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  timeLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
+  timeValue: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '855',
+    marginTop: 2,
+  },
+  timeActive: {
     color: Colors.text,
   },
-  statLabel: {
-    fontSize: 12,
+  timeEmpty: {
     color: Colors.textSecondary,
-    marginTop: 4,
+  },
+  verticalDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: Colors.border,
+    marginHorizontal: Spacing.lg,
   },
   mapContainer: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
     padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
     ...Shadows.card,
+    position: 'relative',
   },
-  mapTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
+  mapTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: Spacing.md,
   },
+  mapTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+  },
   mapWrapper: {
-    height: 300,
+    height: 380,
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -344,6 +494,24 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  noRouteOverlay: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+    left: Spacing.xl,
+    right: Spacing.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    alignItems: 'center',
+  },
+  noRouteText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,

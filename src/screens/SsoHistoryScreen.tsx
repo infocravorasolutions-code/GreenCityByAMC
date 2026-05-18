@@ -9,9 +9,10 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Clock, MapPin, PlayCircle, PauseCircle } from 'lucide-react-native';
+import { ArrowLeft, Clock, MapPin, PlayCircle, PauseCircle, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { ssoService } from '../services/ssoService';
+import { useAuth } from '../context/AuthContext';
 
 const formatSeconds = (totalSeconds: number) => {
   if (!totalSeconds) return '0m';
@@ -28,6 +29,11 @@ const formatTime = (isoString: string) => {
 };
 
 export default function SsoHistoryScreen({ navigation }: any) {
+  const { user } = useAuth();
+  const isSupervisor = user?.role === 'supervisor';
+  
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   
@@ -37,6 +43,34 @@ export default function SsoHistoryScreen({ navigation }: any) {
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
 
+  const formatDisplayDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString(undefined, { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleNextDay = () => {
+    if (selectedDate >= todayStr) return;
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
   useEffect(() => {
     fetchVehicles();
   }, []);
@@ -45,7 +79,7 @@ export default function SsoHistoryScreen({ navigation }: any) {
     if (selectedVehicleId) {
       fetchVehicleData(selectedVehicleId);
     }
-  }, [selectedVehicleId]);
+  }, [selectedVehicleId, selectedDate]);
 
   const fetchVehicles = async () => {
     try {
@@ -66,9 +100,11 @@ export default function SsoHistoryScreen({ navigation }: any) {
     setSummaryData(null);
     setHistoryData(null);
     try {
+      // SSO role strictly loads today's data (no selectedDate parameter passed to prevent 400 error)
+      const dateParam = isSupervisor ? selectedDate : undefined;
       const [summaryResult, historyResult] = await Promise.all([
-        ssoService.getVehicleSummary(vehicleId),
-        ssoService.getVehicleHistory(vehicleId, 200)
+        ssoService.getVehicleSummary(vehicleId, dateParam),
+        ssoService.getVehicleHistory(vehicleId, dateParam, 200)
       ]);
       setSummaryData(summaryResult);
       setHistoryData(historyResult);
@@ -83,7 +119,7 @@ export default function SsoHistoryScreen({ navigation }: any) {
     <View style={styles.headerContent}>
       {/* Vehicle Selector */}
       <View style={styles.vehicleSelectorContainer}>
-        <Text style={styles.sectionLabel}>Select Vehicle</Text>
+        <Text style={styles.sectionLabel}>SELECT VEHICLE</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.vehicleList}>
           {vehicles.map(vehicle => {
             const isSelected = vehicle._id === selectedVehicleId;
@@ -94,7 +130,7 @@ export default function SsoHistoryScreen({ navigation }: any) {
                 onPress={() => setSelectedVehicleId(vehicle._id)}
               >
                 <Text style={[styles.vehicleChipText, isSelected && styles.vehicleChipTextSelected]}>
-                  {vehicle.name || vehicle.vehicleNo || 'Unknown'}
+                  {vehicle.numberPlate || vehicle.name || 'Unknown'}
                 </Text>
               </TouchableOpacity>
             );
@@ -162,7 +198,7 @@ export default function SsoHistoryScreen({ navigation }: any) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading Vehicles...</Text>
+        <Text style={styles.loadingText}>Loading vehicles...</Text>
       </View>
     );
   }
@@ -173,14 +209,43 @@ export default function SsoHistoryScreen({ navigation }: any) {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <ArrowLeft size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>History</Text>
+        <Text style={styles.headerTitle}>Raw History</Text>
         <View style={{ width: 24 }} />
       </View>
+
+      {/* Dynamic Date Banner based on Role */}
+      {isSupervisor ? (
+        <View style={styles.dateBanner}>
+          <TouchableOpacity style={styles.dateButton} onPress={handlePrevDay}>
+            <ChevronLeft size={20} color={Colors.primary} />
+            <Text style={styles.dateButtonText}>Prev</Text>
+          </TouchableOpacity>
+
+          <View style={styles.dateCenter}>
+            <Calendar size={18} color={Colors.primary} style={{ marginRight: Spacing.xs }} />
+            <Text style={styles.dateText}>{formatDisplayDate(selectedDate)}</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.dateButton, selectedDate >= todayStr && styles.dateButtonDisabled]} 
+            onPress={handleNextDay}
+            disabled={selectedDate >= todayStr}
+          >
+            <Text style={[styles.dateButtonText, selectedDate >= todayStr && styles.dateButtonTextDisabled]}>Next</Text>
+            <ChevronRight size={20} color={selectedDate >= todayStr ? Colors.textSecondary : Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.staticDateBanner}>
+          <Calendar size={18} color={Colors.primary} style={{ marginRight: Spacing.sm }} />
+          <Text style={styles.staticDateText}>Today • {formatDisplayDate(todayStr)}</Text>
+        </View>
+      )}
 
       {loadingData ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading history logs...</Text>
+          <Text style={styles.loadingText}>Loading raw history logs...</Text>
         </View>
       ) : (
         <FlatList
@@ -192,7 +257,7 @@ export default function SsoHistoryScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No ping history available.</Text>
+              <Text style={styles.emptyText}>No ping logs available for this date.</Text>
             </View>
           }
         />
@@ -230,6 +295,62 @@ const styles = StyleSheet.create({
   headerContent: {
     backgroundColor: Colors.background,
   },
+  dateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  staticDateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dateButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: Colors.surface,
+  },
+  dateButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginHorizontal: 4,
+  },
+  dateButtonTextDisabled: {
+    color: Colors.textSecondary,
+  },
+  dateCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  staticDateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
   vehicleSelectorContainer: {
     backgroundColor: Colors.surface,
     paddingVertical: Spacing.md,
@@ -237,11 +358,12 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   sectionLabel: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textSecondary,
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
+    letterSpacing: 1.2,
   },
   vehicleList: {
     paddingHorizontal: Spacing.lg,
@@ -260,7 +382,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   vehicleChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: Colors.textSecondary,
   },
@@ -273,7 +395,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: Spacing.lg,
     backgroundColor: Colors.surface,
-    marginBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   statCard: {
     width: '48%',
@@ -284,6 +407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.card,
   },
   iconBox: {
     width: 40,
@@ -309,7 +433,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   tableTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: Colors.text,
     paddingHorizontal: Spacing.lg,
@@ -325,15 +449,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tableHeaderText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textSecondary,
     textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   tableRow: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.03)',
   },
   tableRowEven: {
     backgroundColor: Colors.surface,
@@ -342,7 +469,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   tableRowText: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.text,
     fontWeight: '500',
   },
@@ -357,11 +484,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   emptyContainer: {
-    padding: Spacing.xl,
+    padding: Spacing.xxl,
     alignItems: 'center',
   },
   emptyText: {
     color: Colors.textSecondary,
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

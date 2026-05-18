@@ -21,14 +21,48 @@ import {
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { attendanceService } from '../services/attendanceService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const formatDate = (date: Date) => {
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const monthsGujarati = [
+    'જાન્યુઆરી', 'ફેબ્રુઆરી', 'માર્ચ', 'એપ્રિલ', 'મે', 'જૂન',
+    'જુલાઈ', 'ઑગસ્ટ', 'સપ્ટેમ્બર', 'ઓક્ટોબર', 'નવેમ્બર', 'ડિસેમ્બર'
+  ];
+  const day = date.getDate();
+  const month = monthsGujarati[date.getMonth()];
+  const year = date.getFullYear();
+  
+  const toGujaratiNumerals = (num: number | string) => {
+    const numerals: { [key: string]: string } = {
+      '0': '૦', '1': '૧', '2': '૨', '3': '૩', '4': '૪',
+      '5': '૫', '6': '૬', '7': '૭', '8': '૮', '9': '૯'
+    };
+    return String(num).split('').map(digit => numerals[digit] || digit).join('');
+  };
+  
+  return `${toGujaratiNumerals(day)} ${month}, ${toGujaratiNumerals(year)}`;
 };
 
-const formatTime = (dateStr: string) => {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+const formatTime = (timeStr: string) => {
+  if (!timeStr || timeStr === 'null') return '--:--';
+  try {
+    const date = new Date(timeStr);
+    
+    if (isNaN(date.getTime())) {
+      return timeStr;
+    }
+    
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+    
+    return `${hours}:${minutesStr} ${ampm}`;
+  } catch (e) {
+    return timeStr;
+  }
 };
 
 const ActionTile = ({ title, icon: Icon, color, onPress, description }: any) => (
@@ -55,6 +89,7 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    fetchTodayStatus();
     // Refresh listener for when returning from Attendance screen
     const unsubscribe = navigation.addListener('focus', () => {
       fetchTodayStatus();
@@ -62,21 +97,46 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
     return unsubscribe;
   }, [navigation]);
 
+  const fetchLocalTodayAttendance = async () => {
+    try {
+      const savedStr = await AsyncStorage.getItem('@attendance_today');
+      if (savedStr) {
+        const saved = JSON.parse(savedStr);
+        const rDate = saved.date || saved.createdAt || saved.stepIn;
+        if (rDate) {
+          const localTodayStr = new Date().toLocaleDateString('en-CA');
+          const recordDateStr = new Date(rDate).toLocaleDateString('en-CA');
+          if (recordDateStr === localTodayStr) {
+            return saved;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[EmployeeDashboard] Fetching local attendance failed:', e);
+    }
+    return null;
+  };
+
   const fetchTodayStatus = async () => {
     try {
       const response = await attendanceService.getTodayAttendance();
-      // Handle both { attendance: {...} } and direct object shapes
       const record = response?.attendance ?? response ?? null;
-      // Only set attendance if the record has an actual stepIn (not null/empty)
       if (record && record.stepIn && record.stepIn !== 'null') {
-        setAttendance(record);
+        const normalized = {
+          ...record,
+          stepIn: record.stepIn || record.stepInTime,
+          stepOut: record.stepOut || record.stepOutTime,
+        };
+        setAttendance(normalized);
+        await AsyncStorage.setItem('@attendance_today', JSON.stringify(normalized));
       } else {
-        setAttendance(null); // No active record today — reset to 'Not Started'
+        const local = await fetchLocalTodayAttendance();
+        setAttendance(local);
       }
     } catch (error: any) {
-      // 404 means no attendance today — that's normal, not an error
       if (error?.response?.status === 404) {
-        setAttendance(null);
+        const local = await fetchLocalTodayAttendance();
+        setAttendance(local);
       } else {
         console.error('[EmployeeDashboard] Fetching attendance failed:', error);
       }
@@ -86,20 +146,36 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
     }
   };
 
+  const isShiftEnded = () => {
+    if (!attendance || !attendance.stepOut || attendance.stepOut === 'null') {
+      return false;
+    }
+    const currentHour = new Date().getHours();
+    const shift = String(attendance.shift || '').toLowerCase();
+    
+    if (shift.includes('night')) {
+      // Night shift ends at 7 AM (so from 7 AM to 7 PM, night shift is over)
+      return currentHour >= 7 && currentHour < 19;
+    } else {
+      // Day or morning shift ends at 7 PM (so from 7 PM onwards, day shift is over)
+      return currentHour >= 19 || currentHour < 7;
+    }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchTodayStatus();
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
+  const handleLogout = async () => {
+    Alert.alert('લૉગઆઉટ', 'શું તમે ખરેખર બહાર નીકળવા માંગો છો?', [
+      { text: 'રદ કરો', style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: 'બહાર નીકળો',
         style: 'destructive',
         onPress: async () => {
           try {
+            await AsyncStorage.removeItem('@attendance_today');
             await logout();
           } catch (e) {
             console.error('Logout failed:', e);
@@ -118,7 +194,7 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
   }
 
   const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
-  const hasStartedShift = attendance && attendance.shiftFirstStepIn;
+  const hasStartedShift = attendance && !!attendance.stepIn && attendance.stepIn !== 'null';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -130,8 +206,8 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
       >
         <View style={styles.topBar}>
           <View style={styles.headerTextWrap}>
-            <Text style={styles.greeting}>Hello,</Text>
-            <Text style={styles.userName}>{user?.name || user?.fullName || 'Employee'}</Text>
+            <Text style={styles.greeting}>નમસ્તે,</Text>
+            <Text style={styles.userName}>{user?.name || user?.fullName || 'કર્મચારી'}</Text>
           </View>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <LogOut size={22} color={Colors.error} />
@@ -142,7 +218,7 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
         <View style={styles.statusSection}>
           <View style={styles.statusCard}>
             <View style={styles.statusHeader}>
-              <Text style={styles.statusTitle}>Today's Status</Text>
+              <Text style={styles.statusTitle}>આજની સ્થિતિ</Text>
               <Text style={styles.statusDate}>{formatDate(new Date())}</Text>
             </View>
             
@@ -150,25 +226,35 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
               {isSteppedIn ? (
                 <>
                   <Clock size={48} color={Colors.warning} />
-                  <Text style={[styles.statusMainText, { color: Colors.warning }]}>Currently Working</Text>
+                  <Text style={[styles.statusMainText, { color: Colors.warning }]}>તમે હાલમાં કામ પર છો</Text>
                   <Text style={styles.statusSubText}>
-                    Stepped in at {formatTime(attendance.stepIn)}
+                    હાજરી દાખલ સમય: {formatTime(attendance.stepIn)}
                   </Text>
                 </>
               ) : hasStartedShift ? (
-                <>
-                  <CheckCircle2 size={48} color={Colors.success} />
-                  <Text style={[styles.statusMainText, { color: Colors.success }]}>Stepped Out</Text>
-                  <Text style={styles.statusSubText}>
-                    Shift started at {formatTime(attendance.shiftFirstStepIn)}
-                  </Text>
-                </>
+                isShiftEnded() ? (
+                  <>
+                    <CheckCircle2 size={48} color={Colors.primary} />
+                    <Text style={[styles.statusMainText, { color: Colors.primary }]}>આજનું કામ પૂર્ણ થયું</Text>
+                    <Text style={styles.statusSubText}>
+                      તમે તમારી આજની શિફ્ટ પૂર્ણ કરી લીધી છે!
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={48} color={Colors.success} />
+                    <Text style={[styles.statusMainText, { color: Colors.success }]}>તમે હાલમાં સ્ટેપ આઉટ છો</Text>
+                    <Text style={styles.statusSubText}>
+                      ફરી કામ શરૂ કરવા સ્ટેપ ઇન કરો
+                    </Text>
+                  </>
+                )
               ) : (
                 <>
                   <XCircle size={48} color={Colors.textSecondary} />
-                  <Text style={[styles.statusMainText, { color: Colors.textSecondary }]}>Not Started</Text>
+                  <Text style={[styles.statusMainText, { color: Colors.textSecondary }]}>આજે હાજરી નોંધાઈ નથી</Text>
                   <Text style={styles.statusSubText}>
-                    You haven't stepped in yet today.
+                    હાજરી નોંધવા માટે નીચે ક્લિક કરો
                   </Text>
                 </>
               )}
@@ -177,10 +263,10 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
         </View>
 
         <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <Text style={styles.sectionTitle}>ઝડપી સુવિધાઓ</Text>
           <ActionTile
-            title="MARK ATTENDANCE"
-            description={isSteppedIn ? "Step Out of your shift" : "Step In to start your shift"}
+            title="હાજરી નોંધો"
+            description={isSteppedIn ? "કામ પૂરું કરવા હાજરી બહાર કરો (સ્ટેપ આઉટ)" : "કામ શરૂ કરવા હાજરી દાખલ કરો (સ્ટેપ ઇન)"}
             icon={CalendarCheck}
             color={Colors.primary}
             onPress={() => navigation.navigate('ATTENDANCE')}

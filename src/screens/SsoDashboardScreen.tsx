@@ -23,7 +23,8 @@ import {
   Navigation,
   BarChart2,
   History,
-  LogOut
+  LogOut,
+  Truck
 } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
@@ -32,15 +33,25 @@ import { ssoService, CcrTicket } from '../services/ssoService';
 export default function SsoDashboardScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
   const { user, logout } = useAuth();
-  const [stats, setStats] = useState({ total: 0, pending: 0, resolved: 0 });
+  const isSupervisor = user?.role === 'supervisor';
+  
+  const isSmallScreen = width < 420;
+  const cardWidth = isSmallScreen 
+    ? (width - Spacing.lg * 2 - Spacing.md) / 2 
+    : (width - Spacing.lg * 2 - Spacing.md * 3) / 4;
+  const [stats, setStats] = useState({ vehicles: 0, total: 0, pending: 0, resolved: 0 });
   const [recentTickets, setRecentTickets] = useState<CcrTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const tickets = await ssoService.getTickets(true);
+      const [tickets, vehiclesData] = await Promise.all([
+        ssoService.getTickets(true),
+        ssoService.getLiveLocations()
+      ]);
       setStats({
+        vehicles: vehiclesData.length,
         total: tickets.length,
         pending: tickets.filter(t => t.status === 'pending').length,
         resolved: tickets.filter(t => t.status === 'resolved').length
@@ -85,10 +96,10 @@ export default function SsoDashboardScreen({ navigation }: any) {
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
         <View>
-          <Text style={styles.greetingText}>Hello, {user?.name?.split(' ')[0]}</Text>
+          <Text style={styles.greetingText}>Hello, {(user?.fullName || user?.name || 'Officer').split(' ')[0]}</Text>
           <View style={styles.zoneWrapper}>
             <MapPin size={12} color={Colors.primary} />
-            <Text style={styles.zoneText}>{user?.zone || 'Zone Officer'}</Text>
+            <Text style={styles.zoneText}>{user?.zone || (isSupervisor ? 'Ward Supervisor' : 'Zone Officer')}</Text>
           </View>
         </View>
         <TouchableOpacity style={[styles.iconButton, { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1 }]} onPress={handleLogout}>
@@ -107,14 +118,20 @@ export default function SsoDashboardScreen({ navigation }: any) {
             <Text style={[styles.heroSubtitle, { 
               fontSize: width > 600 ? 18 : 14, 
               lineHeight: width > 600 ? 26 : 20 
-            }]}>Monitor your zone and manage safety tickets efficiently.</Text>
-            <TouchableOpacity 
-              style={styles.heroButton}
-              onPress={() => navigation.navigate('SsoCreateCcr')}
-            >
-              <Text style={styles.heroButtonText}>Start New Ticket</Text>
-              <ArrowRight size={16} color={Colors.primary} />
-            </TouchableOpacity>
+            }]}>
+              {isSupervisor 
+                ? 'Monitor your ward and view safety tickets efficiently.' 
+                : 'Monitor your zone and manage safety tickets efficiently.'}
+            </Text>
+            {!isSupervisor && (
+              <TouchableOpacity 
+                style={styles.heroButton}
+                onPress={() => navigation.navigate('SsoCreateCcr')}
+              >
+                <Text style={styles.heroButtonText}>Start New Ticket</Text>
+                <ArrowRight size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
           </View>
           <ShieldCheck size={80} color="rgba(255,255,255,0.2)" style={styles.heroIcon} />
         </View>
@@ -122,25 +139,32 @@ export default function SsoDashboardScreen({ navigation }: any) {
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
           <StatCard 
+            label="Vehicles" 
+            value={stats.vehicles} 
+            icon={Truck} 
+            color="#0ea5e9" 
+            cardWidth={cardWidth}
+          />
+          <StatCard 
             label="Total" 
             value={stats.total} 
             icon={Ticket} 
             color="#4f46e5" 
-            cardWidth={(width - Spacing.lg * 2 - Spacing.md * 2) / 3}
+            cardWidth={cardWidth}
           />
           <StatCard 
             label="Pending" 
             value={stats.pending} 
             icon={Clock} 
             color="#f59e0b" 
-            cardWidth={(width - Spacing.lg * 2 - Spacing.md * 2) / 3}
+            cardWidth={cardWidth}
           />
           <StatCard 
             label="Resolved" 
             value={stats.resolved} 
             icon={CheckCircle2} 
             color="#10b981" 
-            cardWidth={(width - Spacing.lg * 2 - Spacing.md * 2) / 3}
+            cardWidth={cardWidth}
           />
         </View>
 
@@ -175,6 +199,15 @@ export default function SsoDashboardScreen({ navigation }: any) {
               <History size={22} color="#F59E0B" />
             </View>
             <Text style={styles.actionLabel}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionCard} 
+            onPress={() => navigation.navigate('SsoCcrList')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#F5F3FF' }]}>
+              <Ticket size={22} color="#7C3AED" />
+            </View>
+            <Text style={styles.actionLabel}>Ward Tasks</Text>
           </TouchableOpacity>
         </View>
 
@@ -215,12 +248,14 @@ export default function SsoDashboardScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => navigation.navigate('SsoCreateCcr')}
-      >
-        <PlusCircle size={32} color={Colors.surface} />
-      </TouchableOpacity>
+      {!isSupervisor && (
+        <TouchableOpacity 
+          style={styles.fab}
+          onPress={() => navigation.navigate('SsoCreateCcr')}
+        >
+          <PlusCircle size={32} color={Colors.surface} />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -319,6 +354,7 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: Spacing.xl,
   },
@@ -327,6 +363,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     alignItems: 'center',
+    marginBottom: Spacing.md,
     ...Shadows.card,
   },
   statIconWrapper: {

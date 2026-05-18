@@ -31,7 +31,8 @@ function App(): React.JSX.Element {
       // Notification setup
       const hasPermission = await notificationService.requestUserPermission();
       if (hasPermission) {
-        await notificationService.getFCMToken();
+        const token = await notificationService.getFCMToken();
+        console.log('📱 [GreenCityAMC] FCM Device Token:', token);
         await notificationService.createDefaultChannel();
       }
     };

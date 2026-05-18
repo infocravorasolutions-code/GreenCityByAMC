@@ -12,19 +12,16 @@ import {
   Alert,
   Image
 } from 'react-native';
-import { Mail, Lock, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
+import { Lock, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
-import { notificationService } from '../services/notificationService';
 
 const { height } = Dimensions.get('window');
 
-type LoginType = 'employee' | 'manager' | 'sso';
+
 
 export default function LoginScreen({ navigation }: any) {
-  const [loginType, setLoginType] = useState<LoginType>('employee');
-  const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,11 +29,7 @@ export default function LoginScreen({ navigation }: any) {
   const { login } = useAuth();
 
   const handleLogin = async () => {
-    if (loginType === 'manager' && !email) {
-      Alert.alert('Error', 'Please enter your email');
-      return;
-    }
-    if (loginType === 'employee' && !mobile) {
+    if (!mobile.trim()) {
       Alert.alert('Error', 'Please enter your mobile number');
       return;
     }
@@ -47,32 +40,71 @@ export default function LoginScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      let response;
-      if (loginType === 'employee') {
-        response = await authService.employeeLogin({ mobile, password });
-      } else if (loginType === 'manager') {
-        response = await authService.login({ email, password });
-      } else {
-        // SSO login uses the same endpoint as manager
-        response = await authService.login({ email, password });
-      }
-      
-      console.log(`[${loginType} Login Success] Response:`, JSON.stringify(response, null, 2));
+      const roles: ('employee' | 'supervisor' | 'sso' | 'manager' | 'admin')[] = [
+        'employee',
+        'supervisor',
+        'sso',
+        'manager',
+        'admin',
+      ];
 
-      if (response && response.token) {
-        await login(response.token, response.user);
-        // DO NOT manually navigate — AppNavigator automatically re-renders
-        // to the correct screen (HOME/SsoDashboard/Main) based on role
-        // when the token is set in AuthContext.
+      // Fire authentication checks in parallel for all roles
+      const promises = roles.map(async (role) => {
+        try {
+          let res;
+          if (role === 'employee') {
+            res = await authService.employeeLogin({ mobile: mobile.trim(), password });
+          } else {
+            res = await authService.login({ mobile: mobile.trim(), password, role });
+          }
+          if (res && res.token) {
+            return { role, res };
+          }
+          throw new Error('No token');
+        } catch (e) {
+          throw e;
+        }
+      });
+
+      // Safe engine promise resolution helper (custom Promise.any)
+      const firstSuccessful = async (proms: Promise<{ role: string; res: any }>[]) => {
+        return new Promise<{ role: string; res: any }>((resolve, reject) => {
+          let rejectedCount = 0;
+          let lastError: any = null;
+          proms.forEach((p) => {
+            p.then((val) => {
+              resolve(val);
+            }).catch((err) => {
+              rejectedCount++;
+              lastError = err;
+              if (rejectedCount === proms.length) {
+                reject(lastError || new Error('Invalid credentials'));
+              }
+            });
+          });
+        });
+      };
+
+      const successfulAuth = await firstSuccessful(promises);
+
+      console.log(`[Auto-Detected Login Success] Role: ${successfulAuth.role}`, JSON.stringify(successfulAuth.res, null, 2));
+
+      if (successfulAuth.res && successfulAuth.res.token) {
+        await login(successfulAuth.res.token, successfulAuth.res.user);
       } else {
         throw new Error('Invalid response from server');
       }
     } catch (error: any) {
       console.error('Login Error:', error);
-      Alert.alert(
-        'Login Failed',
-        error.response?.data?.message || 'Please check your credentials and try again.'
-      );
+      
+      let message = 'Please check your credentials and try again.';
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message && error.message !== 'Invalid credentials' && error.message !== 'No token') {
+        message = error.message;
+      }
+      
+      Alert.alert('Login Failed', message);
     } finally {
       setLoading(false);
     }
@@ -96,70 +128,27 @@ export default function LoginScreen({ navigation }: any) {
         </View>
 
         <View style={styles.formContainer}>
-          {/* Toggle Login Type */}
-          <View style={styles.toggleContainer}>
-            <TouchableOpacity
-              style={[styles.toggleButton, loginType === 'employee' && styles.toggleButtonActive]}
-              onPress={() => setLoginType('employee')}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.toggleText, loginType === 'employee' && styles.toggleTextActive]}>
-                Employee
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleButton, loginType === 'manager' && styles.toggleButtonActive]}
-              onPress={() => setLoginType('manager')}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.toggleText, loginType === 'manager' && styles.toggleTextActive]}>
-                Manager
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleButton, loginType === 'sso' && styles.toggleButtonActive]}
-              onPress={() => setLoginType('sso')}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.toggleText, loginType === 'sso' && styles.toggleTextActive]}>
-                SSO
-              </Text>
-            </TouchableOpacity>
+          <Text style={styles.roleHint}>Enter your registered mobile number and password to sign in</Text>
+
+          {/* Mobile Number Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Mobile Number</Text>
+            <View style={styles.inputWrapper}>
+              <Phone size={20} color={Colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="9876543210"
+                placeholderTextColor={Colors.textSecondary}
+                value={mobile}
+                onChangeText={setMobile}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                maxLength={15}
+              />
+            </View>
           </View>
 
-          {loginType === 'manager' || loginType === 'sso' ? (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <View style={styles.inputWrapper}>
-                <Mail size={20} color={Colors.textSecondary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={loginType === 'manager' ? "manager@greencity.gov" : "sso@greencity.gov"}
-                  placeholderTextColor={Colors.textSecondary}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mobile Number</Text>
-              <View style={styles.inputWrapper}>
-                <Phone size={20} color={Colors.textSecondary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="9876543210"
-                  placeholderTextColor={Colors.textSecondary}
-                  value={mobile}
-                  onChangeText={setMobile}
-                  keyboardType="phone-pad"
-                />
-              </View>
-            </View>
-          )}
-
+          {/* Password Input */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Password</Text>
             <View style={styles.inputWrapper}>
@@ -181,10 +170,6 @@ export default function LoginScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
           </View>
-
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -251,31 +236,13 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     ...Shadows.medium,
   },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.background,
-    borderRadius: BorderRadius.md,
-    padding: 4,
-    marginBottom: Spacing.lg,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: BorderRadius.sm,
-  },
-  toggleButtonActive: {
-    backgroundColor: Colors.surface,
-    ...Shadows.card,
-  },
-  toggleText: {
-    fontSize: 15,
-    fontWeight: '600',
+
+  roleHint: {
+    fontSize: 12,
     color: Colors.textSecondary,
-  },
-  toggleTextActive: {
-    color: Colors.primary,
-    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    marginTop: Spacing.xs,
   },
   inputGroup: {
     marginBottom: Spacing.lg,
@@ -304,15 +271,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: Spacing.xl,
-  },
-  forgotPasswordText: {
-    color: Colors.primary,
-    fontWeight: '600',
-    fontSize: 14,
-  },
   loginButton: {
     backgroundColor: Colors.primary,
     height: 56,
@@ -321,6 +279,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.soft,
+    marginTop: Spacing.sm,
   },
   loginButtonDisabled: {
     backgroundColor: Colors.primaryLight,
@@ -342,6 +301,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
-    top: 25
+    top: 25,
   },
 });

@@ -25,6 +25,7 @@ import {
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { attendanceService } from '../services/attendanceService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
@@ -51,23 +52,70 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
   const fetchTodayStatus = async () => {
     try {
       const response = await attendanceService.getTodayAttendance();
-      if (response && response.attendance !== undefined) {
-        setAttendance(response.attendance);
-      }
-      // If we need to step in/out, fire the GPS early
-      if (!response?.attendance?.stepOut) {
-         fetchGPSAsync();
+      const record = response?.attendance ?? response ?? null;
+      if (record && record.stepIn && record.stepIn !== 'null') {
+        const normalized = {
+          ...record,
+          stepIn: record.stepIn || record.stepInTime,
+          stepOut: record.stepOut || record.stepOutTime,
+        };
+        setAttendance(normalized);
+        await AsyncStorage.setItem('@attendance_today', JSON.stringify(normalized));
+      } else {
+        const savedStr = await AsyncStorage.getItem('@attendance_today');
+        if (savedStr) {
+          const saved = JSON.parse(savedStr);
+          const rDate = saved.date || saved.createdAt || saved.stepIn;
+          if (rDate) {
+            const localTodayStr = new Date().toLocaleDateString('en-CA');
+            const recordDateStr = new Date(rDate).toLocaleDateString('en-CA');
+            if (recordDateStr === localTodayStr) {
+              setAttendance(saved);
+            } else {
+              await AsyncStorage.removeItem('@attendance_today');
+              setAttendance(null);
+            }
+          } else {
+            setAttendance(null);
+          }
+        } else {
+          setAttendance(null);
+        }
       }
     } catch (error) {
       console.error('[EmployeeAttendance] Fetching attendance failed:', error);
+      try {
+        const savedStr = await AsyncStorage.getItem('@attendance_today');
+        if (savedStr) {
+          const saved = JSON.parse(savedStr);
+          const rDate = saved.date || saved.createdAt || saved.stepIn;
+          if (rDate) {
+            const localTodayStr = new Date().toLocaleDateString('en-CA');
+            const recordDateStr = new Date(rDate).toLocaleDateString('en-CA');
+            if (recordDateStr === localTodayStr) {
+              setAttendance(saved);
+            } else {
+              await AsyncStorage.removeItem('@attendance_today');
+              setAttendance(null);
+            }
+          } else {
+            setAttendance(null);
+          }
+        } else {
+          setAttendance(null);
+        }
+      } catch (e) {
+        console.error('[EmployeeAttendance] Error reading AsyncStorage backup:', e);
+      }
     } finally {
       setLoading(false);
+      fetchGPSAsync();
     }
   };
 
   const fetchGPSAsync = async () => {
     setFetchingLocation(true);
-    setLocationText('Locating automatically...');
+    setLocationText('સ્થાન આપમેળે શોધી રહ્યું છે...');
 
     if (Platform.OS === 'android') {
       try {
@@ -93,7 +141,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
     const fallbackTimeout = setTimeout(() => {
       setFetchingLocation(false);
-      if (locationText === 'Locating automatically...') {
+      if (locationText === 'સ્થાન આપમેળે શોધી રહ્યું છે...') {
          setLocationText('');
       }
     }, 8000);
@@ -104,7 +152,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
         const { latitude, longitude } = position.coords;
         setRawCoords({ lat: latitude, lng: longitude });
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, {
+          const res = await fetch(`https://us1.locationiq.com/v1/reverse?key=pk.26a2af4750035155566642c0210a9d2b&lat=${latitude}&lon=${longitude}&format=json`, {
             headers: {
               'User-Agent': 'GreenCityAMC-AttendanceApp/1.0 (Mobile)',
               'Accept': 'application/json'
@@ -131,7 +179,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        Alert.alert('Permission Denied', 'Camera permission is required.');
+        Alert.alert('પરવાનગી નકારી', 'કેમેરાની પરવાનગી જરૂરી છે.');
         return;
       }
     }
@@ -160,15 +208,16 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
   };
 
   const handleSubmission = async () => {
-    const isSteppingIn = !attendance || (attendance && (!attendance.stepIn || attendance.stepIn === 'null'));
+    const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
+    const isSteppingIn = !attendance || !isSteppedIn;
     
     if (isSteppingIn && !photo) {
-      Alert.alert('Photo Required', 'Please tap the camera box to capture a selfie.');
+      Alert.alert('ફોટો જરૂરી છે', 'કૃપા કરીને સેલ્ફી લેવા માટે કેમેરા બોક્સ પર ટેપ કરો.');
       return;
     }
 
     if (!locationText.trim()) {
-      Alert.alert('Location Required', 'Please wait for auto-detect or type your location manually.');
+      Alert.alert('સ્થાન જરૂરી છે', 'કૃપા કરીને સ્થાન આપમેળે શોધવાની રાહ જુઓ અથવા તેને જાતે લખો.');
       return;
     }
 
@@ -180,21 +229,32 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
       formData.append('address', locationText);
       if (note) formData.append('note', note);
 
+      let response;
       if (isSteppingIn) {
         formData.append('stepInImage', {
           uri: photo.uri,
           type: photo.type || 'image/jpeg',
           name: photo.fileName || 'photo.jpg',
         } as any);
-        await attendanceService.employeeStepIn(formData);
+        response = await attendanceService.employeeStepIn(formData);
       } else {
-        await attendanceService.employeeStepOut(formData);
+        response = await attendanceService.employeeStepOut(formData);
+      }
+
+      const record = response?.attendance ?? response ?? null;
+      if (record) {
+        const normalized = {
+          ...record,
+          stepIn: record.stepIn || record.stepInTime,
+          stepOut: record.stepOut || record.stepOutTime,
+        };
+        await AsyncStorage.setItem('@attendance_today', JSON.stringify(normalized));
       }
       
       triggerSuccess();
     } catch (error: any) {
       console.error(`[Attendance] FAILED:`, error);
-      Alert.alert('ERROR', error?.response?.data?.message || 'Could not save attendance. Please try again.');
+      Alert.alert('ભૂલ', error?.response?.data?.message || 'હાજરી સાચવી શકાઈ નથી. કૃપા કરીને ફરી પ્રયાસ કરો.');
     } finally {
       setSubmitting(false);
     }
@@ -208,14 +268,15 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     );
   }
 
-  const isSteppingIn = !attendance || (attendance && (!attendance.stepIn || attendance.stepIn === 'null'));
-  const isCompleted = attendance && attendance.stepOut;
+  const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
+  const isSteppingIn = !attendance || !isSteppedIn;
+  const isCompleted = false; // Allow unlimited step-in/out cycles throughout the day
 
   if (isCompleted) {
     return (
       <SafeAreaView style={[styles.container, styles.centerContent]}>
         <CheckCircle2 size={80} color={Colors.success} />
-        <Text style={styles.completedText}>You have completed your shift today!</Text>
+        <Text style={styles.completedText}>તમે આજે તમારી શિફ્ટ પૂર્ણ કરી લીધી છે!</Text>
       </SafeAreaView>
     );
   }
@@ -228,7 +289,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
             <Animated.View entering={ZoomIn.duration(400)}>
               <CheckCircle2 size={80} color={Colors.success} style={{ marginBottom: 20 }} />
             </Animated.View>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: Colors.success }}>Success!</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: Colors.success }}>સફળતાપૂર્વક નોંધાયું!</Text>
           </Animated.View>
         ) : (
           <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
@@ -236,16 +297,16 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
                <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginRight: 8, marginLeft: -8 }}>
                  <ChevronLeft size={28} color={Colors.text} />
                </TouchableOpacity>
-               <View>
-                 <Text style={styles.title}>{isSteppingIn ? 'Step In' : 'Step Out'}</Text>
-                 <Text style={styles.subtitle}>Capture your details to mark attendance</Text>
+               <View style={{ flex: 1 }}>
+                 <Text style={styles.title}>{isSteppingIn ? 'હાજરી દાખલ કરો (સ્ટેપ ઇન)' : 'હાજરી બહાર કરો (સ્ટેપ આઉટ)'}</Text>
+                 <Text style={styles.subtitle}>હાજરી નોંધવા માટે તમારી વિગતો મેળવો</Text>
                </View>
             </View>
 
             {/* Selfie Section */}
             {isSteppingIn && (
               <View style={styles.section}>
-                <Text style={styles.label}>Selfie Verification</Text>
+                <Text style={styles.label}>સેલ્ફી વેરીફિકેશન</Text>
                 <TouchableOpacity
                   style={styles.viewfinder}
                   onPress={capturePhoto}
@@ -263,7 +324,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
                   ) : (
                     <View style={styles.emptyCamera}>
                       <CameraIcon size={48} color={Colors.textSecondary} />
-                      <Text style={styles.emptyCameraText}>Tap to capture</Text>
+                      <Text style={styles.emptyCameraText}>ફોટો લેવા માટે ટેપ કરો</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -272,11 +333,11 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
 
             <View style={styles.section}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Location</Text>
+                <Text style={styles.label}>સ્થાન (સરનામું)</Text>
                 <View style={styles.locationInputWrapper}>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter location manually..."
+                    placeholder="સરનામું જાતે દાખલ કરો..."
                     value={locationText}
                     onChangeText={setLocationText}
                   />
@@ -287,10 +348,10 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Note (Optional)</Text>
+                <Text style={styles.label}>નોંધ (વૈકલ્પિક)</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  placeholder="Add any context..."
+                  placeholder="વધારાની વિગતો ઉમેરો..."
                   multiline
                   value={note}
                   onChangeText={setNote}
@@ -315,7 +376,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
                     <View style={styles.submitBtnContent}>
                       {isSteppingIn ? <LogIn size={20} color={Colors.surface} /> : <LogOut size={20} color={Colors.surface} />}
                       <Text style={styles.submitBtnText}>
-                        {isSteppingIn ? 'MARK STEP IN' : 'MARK STEP OUT'}
+                        {isSteppingIn ? 'હાજરી દાખલ કરો' : 'હાજરી બહાર કરો'}
                       </Text>
                     </View>
                   )}
@@ -349,7 +410,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   title: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: '900',
     color: '#0f172a',
     letterSpacing: -0.5,

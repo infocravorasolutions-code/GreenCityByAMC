@@ -11,6 +11,7 @@ interface User {
   email?: string;    // Manager 
   phone?: string;    // Employee
   role: string;
+  zone?: string;
   image?: string;
   tenantId?: string;
   tenant?: any;
@@ -59,8 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (response) => response,
       async (error) => {
         if (error.response && error.response.status === 401) {
-          console.warn('[AuthInterceptor] 401 Unauthorized detected. Clearing session.');
-          await logout();
+          const requestUrl = error.config?.url || '';
+          // Never trigger auto-logout for credentials checks on login endpoints
+          if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/employee-login')) {
+            console.log('[AuthInterceptor] 401 detected on login endpoint. Skipping auto-logout.');
+          } else {
+            console.warn('[AuthInterceptor] 401 Unauthorized detected. Clearing active session.');
+            await logout();
+          }
         }
         return Promise.reject(error);
       }

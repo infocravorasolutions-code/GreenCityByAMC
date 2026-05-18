@@ -95,17 +95,23 @@ export default function SsoLiveMapScreen({ navigation }: any) {
         var markers = {};
 
         function updateMarkers(locations) {
+          if (!locations || locations.length === 0) return;
+          var bounds = [];
           locations.forEach(loc => {
             if(!loc.latestLocation) return;
-            var color = loc.isOnline ? '#10b981' : '#6b7280';
+            var latLng = [loc.latestLocation.latitude, loc.latestLocation.longitude];
+            bounds.push(latLng);
             if (markers[loc._id]) {
-              markers[loc._id].setLatLng([loc.latestLocation.latitude, loc.latestLocation.longitude]);
+              markers[loc._id].setLatLng(latLng);
             } else {
-              var marker = L.marker([loc.latestLocation.latitude, loc.latestLocation.longitude]).addTo(map);
+              var marker = L.marker(latLng).addTo(map);
               marker.bindPopup("<b>" + loc.name + "</b><br>Speed: " + loc.latestLocation.speedKph + " km/h");
               markers[loc._id] = marker;
             }
           });
+          if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [40, 40] });
+          }
         }
       </script>
     </body>
