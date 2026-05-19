@@ -89,6 +89,10 @@ export default function LoginScreen({ navigation }: any) {
 
       console.log(`[Auto-Detected Login Success] Role: ${successfulAuth.role}`, JSON.stringify(successfulAuth.res, null, 2));
 
+      if (successfulAuth.role === 'admin') {
+        throw new Error('ઍડમિન રોલે વેબ પેનલ દ્વારા લોગીન કરવું આવશ્યક છે. (Admin role must login via the Web Panel.)');
+      }
+
       if (successfulAuth.res && successfulAuth.res.token) {
         await login(successfulAuth.res.token, successfulAuth.res.user);
       } else {
@@ -97,14 +101,16 @@ export default function LoginScreen({ navigation }: any) {
     } catch (error: any) {
       console.error('Login Error:', error);
       
-      let message = 'Please check your credentials and try again.';
-      if (error.response?.data?.message) {
+      let message = 'કૃપા કરીને તમારા મોબાઇલ નંબર અને પાસવર્ડ તપાસો અને ફરી પ્રયાસ કરો. (Please check your credentials and try again.)';
+      if (error.message && error.message.includes('વેબ પેનલ')) {
+        message = error.message;
+      } else if (error.response?.data?.message) {
         message = error.response.data.message;
       } else if (error.message && error.message !== 'Invalid credentials' && error.message !== 'No token') {
         message = error.message;
       }
       
-      Alert.alert('Login Failed', message);
+      Alert.alert('લોગિન નિષ્ફળ (Login Failed)', message);
     } finally {
       setLoading(false);
     }

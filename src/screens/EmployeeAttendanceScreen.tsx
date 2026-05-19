@@ -53,7 +53,8 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     try {
       const response = await attendanceService.getTodayAttendance();
       const record = response?.attendance ?? response ?? null;
-      if (record && record.stepIn && record.stepIn !== 'null') {
+      const hasStepInVal = record && (record.stepIn || record.stepInTime);
+      if (record && hasStepInVal && hasStepInVal !== 'null') {
         const normalized = {
           ...record,
           stepIn: record.stepIn || record.stepInTime,
@@ -208,7 +209,11 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
   };
 
   const handleSubmission = async () => {
-    const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
+    const isSteppedIn = attendance && 
+      (!!attendance.stepIn || !!attendance.stepInTime) && 
+      attendance.stepIn !== 'null' && 
+      attendance.stepInTime !== 'null' && 
+      (!attendance.stepOut && !attendance.stepOutTime || attendance.stepOut === 'null' || attendance.stepOutTime === 'null');
     const isSteppingIn = !attendance || !isSteppedIn;
     
     if (isSteppingIn && !photo) {
@@ -268,7 +273,11 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     );
   }
 
-  const isSteppedIn = attendance && !!attendance.stepIn && attendance.stepIn !== 'null' && (!attendance.stepOut || attendance.stepOut === 'null');
+  const isSteppedIn = attendance && 
+    (!!attendance.stepIn || !!attendance.stepInTime) && 
+    attendance.stepIn !== 'null' && 
+    attendance.stepInTime !== 'null' && 
+    (!attendance.stepOut && !attendance.stepOutTime || attendance.stepOut === 'null' || attendance.stepOutTime === 'null');
   const isSteppingIn = !attendance || !isSteppedIn;
   const isCompleted = false; // Allow unlimited step-in/out cycles throughout the day
 
