@@ -8,10 +8,11 @@ interface User {
   _id: string;
   fullName?: string; // Manager
   name?: string;     // Employee
-  email?: string;    // Manager 
   phone?: string;    // Employee
   role: string;
   zone?: string;
+  zones?: string[];
+  zoneLabel?: string;
   image?: string;
   tenantId?: string;
   tenant?: any;
@@ -21,6 +22,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  selectedZone: string | null;
+  setSelectedZone: (zone: string) => void;
   login: (token: string, userData: User) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (userData: User) => void;
@@ -31,7 +34,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [selectedZone, setSelectedZoneState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const setSelectedZone = async (zone: string) => {
+    setSelectedZoneState(zone);
+    await AsyncStorage.setItem('selectedZone', zone);
+  };
 
   useEffect(() => {
     // Load stored token and user on start
@@ -39,10 +48,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const storedToken = await AsyncStorage.getItem('userToken');
         const storedUser = await AsyncStorage.getItem('userData');
+        const storedZone = await AsyncStorage.getItem('selectedZone');
         
         if (storedToken && storedUser) {
           setToken(storedToken);
           setUser(JSON.parse(storedUser));
+          if (storedZone) setSelectedZoneState(storedZone);
         }
       } catch (e) {
         console.error('Failed to load auth data', e);
@@ -117,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, selectedZone, setSelectedZone, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

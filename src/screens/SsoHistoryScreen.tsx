@@ -9,7 +9,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Clock, MapPin, PlayCircle, PauseCircle, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Clock, MapPin, PlayCircle, PauseCircle, Calendar, ChevronLeft, ChevronRight, Truck } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { ssoService } from '../services/ssoService';
 import { useAuth } from '../context/AuthContext';
@@ -29,7 +29,7 @@ const formatTime = (isoString: string) => {
 };
 
 export default function SsoHistoryScreen({ navigation }: any) {
-  const { user } = useAuth();
+  const { user, selectedZone } = useAuth();
   const isSupervisor = user?.role === 'supervisor';
   
   const todayStr = new Date().toISOString().split('T')[0];
@@ -73,17 +73,17 @@ export default function SsoHistoryScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchVehicles();
-  }, []);
+  }, [selectedZone]);
 
   useEffect(() => {
     if (selectedVehicleId) {
       fetchVehicleData(selectedVehicleId);
     }
-  }, [selectedVehicleId, selectedDate]);
+  }, [selectedVehicleId, selectedDate, selectedZone]);
 
   const fetchVehicles = async () => {
     try {
-      const data = await ssoService.getLiveLocations();
+      const data = await ssoService.getLiveLocations(selectedZone || undefined);
       setVehicles(data);
       if (data.length > 0) {
         setSelectedVehicleId(data[0]._id);
@@ -102,9 +102,10 @@ export default function SsoHistoryScreen({ navigation }: any) {
     try {
       // SSO role strictly loads today's data (no selectedDate parameter passed to prevent 400 error)
       const dateParam = isSupervisor ? selectedDate : undefined;
+      const zoneParam = selectedZone || undefined;
       const [summaryResult, historyResult] = await Promise.all([
-        ssoService.getVehicleSummary(vehicleId, dateParam),
-        ssoService.getVehicleHistory(vehicleId, dateParam, 200)
+        ssoService.getVehicleSummary(vehicleId, dateParam, zoneParam),
+        ssoService.getVehicleHistory(vehicleId, dateParam, 200, zoneParam)
       ]);
       setSummaryData(summaryResult);
       setHistoryData(historyResult);
@@ -172,25 +173,57 @@ export default function SsoHistoryScreen({ navigation }: any) {
 
       {/* Pings Section Header */}
       <View style={styles.tableSection}>
-        <Text style={styles.tableTitle}>
-          Raw pings ({historyData?.total || 0} total, showing {historyData?.items?.length || 0})
-        </Text>
-        <View style={styles.tableHeaderRow}>
-          <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Time</Text>
-          <Text style={[styles.tableHeaderText, { flex: 1 }]}>Lat</Text>
-          <Text style={[styles.tableHeaderText, { flex: 1 }]}>Lng</Text>
-          <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'right' }]}>km/h</Text>
-        </View>
+        <Text style={styles.tableTitle}>Trip Summary</Text>
+        
+        {historyData?.items && historyData.items.length > 0 ? (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryIconBox}>
+                <Truck size={20} color={Colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.summaryLabel}>VEHICLE</Text>
+                <Text style={styles.summaryValue}>
+                  {vehicles.find(v => v._id === selectedVehicleId)?.numberPlate || 
+                   vehicles.find(v => v._id === selectedVehicleId)?.name || 'Unknown'}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.summaryDivider} />
+            
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryIconBox, { backgroundColor: '#DCFCE7' }]}>
+                <PlayCircle size={20} color="#22C55E" />
+              </View>
+              <View>
+                <Text style={styles.summaryLabel}>START TIME</Text>
+                <Text style={styles.summaryValue}>
+                  {formatTime(historyData.items[historyData.items.length - 1].timestamp)}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.summaryDivider} />
+            
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryIconBox, { backgroundColor: '#FEE2E2' }]}>
+                <PauseCircle size={20} color="#EF4444" />
+              </View>
+              <View>
+                <Text style={styles.summaryLabel}>END TIME</Text>
+                <Text style={styles.summaryValue}>
+                  {formatTime(historyData.items[0].timestamp)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No trip history available for this date.</Text>
+          </View>
+        )}
       </View>
-    </View>
-  );
-
-  const renderPingItem = ({ item, index }: { item: any; index: number }) => (
-    <View style={[styles.tableRow, index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
-      <Text style={[styles.tableRowText, { flex: 1.5 }]}>{formatTime(item.timestamp)}</Text>
-      <Text style={[styles.tableRowText, { flex: 1 }]}>{item.latitude.toFixed(5)}</Text>
-      <Text style={[styles.tableRowText, { flex: 1 }]}>{item.longitude.toFixed(5)}</Text>
-      <Text style={[styles.tableRowText, { flex: 0.8, textAlign: 'right' }]}>{item.speedKph}</Text>
     </View>
   );
 
@@ -245,22 +278,12 @@ export default function SsoHistoryScreen({ navigation }: any) {
       {loadingData ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading raw history logs...</Text>
+          <Text style={styles.loadingText}>Loading history data...</Text>
         </View>
       ) : (
-        <FlatList
-          data={historyData?.items || []}
-          renderItem={renderPingItem}
-          keyExtractor={(item) => item._id}
-          ListHeaderComponent={renderHeader}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No ping logs available for this date.</Text>
-            </View>
-          }
-        />
+        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {renderHeader()}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -439,39 +462,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
   },
-  tableHeaderRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    backgroundColor: '#F8FAFC',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+  summaryCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.xl,
+    borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.card,
   },
-  tableHeaderText: {
-    fontSize: 11,
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  summaryIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  summaryLabel: {
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+    marginBottom: 2,
   },
-  tableRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.03)',
-  },
-  tableRowEven: {
-    backgroundColor: Colors.surface,
-  },
-  tableRowOdd: {
-    backgroundColor: '#FAFAFA',
-  },
-  tableRowText: {
-    fontSize: 12,
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '800',
     color: Colors.text,
-    fontWeight: '500',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.sm,
   },
   loadingContainer: {
     flex: 1,

@@ -9,6 +9,7 @@ import UpdateScreen from './src/screens/UpdateScreen';
 import { checkForUpdate, UpdateDecision } from './src/services/appSettingsService';
 import SplashScreen from './src/screens/SplashScreen';
 import { notificationService } from './src/services/notificationService';
+import { LanguageProvider } from './src/context/LanguageContext';
 
 function App(): React.JSX.Element {
   const [updateDecision, setUpdateDecision] = React.useState<UpdateDecision | null>(null);
@@ -96,24 +97,26 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-          <NavigationContainer>
-            <StatusBar barStyle="dark-content" />
-            {!updateChecked || !updateDecision ? (
-              <SplashScreen />
-            ) : updateDecision.kind === 'ok' ? (
-              <AppNavigator />
-            ) : updateDecision.kind === 'optional' ? (
-              // Optional update uses a popup; keep app on splash until user picks.
-              <SplashScreen />
-            ) : (
-              <UpdateScreen
-                decision={updateDecision}
-                onSkip={updateDecision.kind === 'optional' ? () => setUpdateDecision({ kind: 'ok' }) : undefined}
-              />
-            )}
-          </NavigationContainer>
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <NavigationContainer>
+              <StatusBar barStyle="dark-content" />
+              {!updateChecked || !updateDecision ? (
+                <SplashScreen />
+              ) : updateDecision.kind === 'ok' ? (
+                <AppNavigator />
+              ) : updateDecision.kind === 'optional' ? (
+                // Optional update uses a popup; keep app on splash until user picks.
+                <SplashScreen />
+              ) : (
+                <UpdateScreen
+                  decision={updateDecision}
+                  onSkip={updateDecision.kind === 'optional' ? () => setUpdateDecision({ kind: 'ok' }) : undefined}
+                />
+              )}
+            </NavigationContainer>
+          </AuthProvider>
+        </LanguageProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

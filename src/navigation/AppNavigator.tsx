@@ -3,6 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
+import SsoTabNavigator from './SsoTabNavigator';
 import { useAuth } from '../context/AuthContext';
 
 // Import Screens
@@ -15,6 +16,10 @@ import SsoCcrDetailScreen from '../screens/SsoCcrDetailScreen';
 import SsoLiveMapScreen from '../screens/SsoLiveMapScreen';
 import SsoAnalyticsScreen from '../screens/SsoAnalyticsScreen';
 import SsoHistoryScreen from '../screens/SsoHistoryScreen';
+import StaffScreen from '../screens/StaffScreen';
+import AttendanceScreen from '../screens/AttendanceScreen';
+import AttendanceReportScreen from '../screens/AttendanceReportScreen';
+import SsoManagersScreen from '../screens/SsoManagersScreen';
 
 import ManagerCcrListScreen from '../screens/ManagerCcrListScreen';
 
@@ -29,7 +34,7 @@ export default function AppNavigator() {
   }
 
   const isEmployee = user?.role === 'employee';
-  const isSsoOrSupervisor = user?.role === 'sso' || user?.role === 'supervisor';
+  const isSsoOrSupervisor = user?.role === 'sso' || user?.role === 'supervisor' || user?.role === 'admin';
   const isManager = user?.role === 'manager';
 
   return (
@@ -46,13 +51,14 @@ export default function AppNavigator() {
           </Stack.Group>
         ) : isSsoOrSupervisor ? (
           <Stack.Group>
-            <Stack.Screen name="SsoDashboard" component={SsoDashboardScreen} />
+            <Stack.Screen name="MainSso" component={SsoTabNavigator} />
             <Stack.Screen name="SsoCcrList" component={SsoCcrListScreen} />
             <Stack.Screen name="SsoCreateCcr" component={SsoCreateCcrScreen} />
             <Stack.Screen name="SsoCcrDetail" component={SsoCcrDetailScreen} />
             <Stack.Screen name="SsoLiveMap" component={SsoLiveMapScreen} />
             <Stack.Screen name="SsoAnalytics" component={SsoAnalyticsScreen} />
             <Stack.Screen name="SsoHistory" component={SsoHistoryScreen} />
+            <Stack.Screen name="SsoManagers" component={SsoManagersScreen} />
           </Stack.Group>
         ) : isManager ? (
           <Stack.Group>

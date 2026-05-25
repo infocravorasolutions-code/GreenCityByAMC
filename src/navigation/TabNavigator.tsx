@@ -1,4 +1,5 @@
 import React from 'react';
+import { TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, CalendarCheck, Users, Settings } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,12 +13,14 @@ import AttendanceReportScreen from '../screens/AttendanceReportScreen';
 import EmployeeDashboardScreen from '../screens/EmployeeDashboardScreen';
 import EmployeeAttendanceScreen from '../screens/EmployeeAttendanceScreen';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from '../context/LanguageContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const isEmployee = user?.role === 'employee';
 
@@ -49,12 +52,14 @@ export default function TabNavigator() {
           color: Colors.text,
         },
         headerShadowVisible: false,
+        tabBarButton: (props) => <TouchableOpacity {...props} activeOpacity={0.8} />,
       }}
     >
           <Tab.Screen
             name="HOME"
             component={DashboardScreen}
             options={{
+              tabBarLabel: t('nav.home'),
               tabBarIcon: ({ color }) => <Home size={32} color={color} />,
             }}
           />
@@ -62,6 +67,7 @@ export default function TabNavigator() {
             name="STEP IN/OUT"
             component={AttendanceScreen}
             options={{
+              tabBarLabel: t('nav.stepIn'),
               tabBarIcon: ({ color }) => <CalendarCheck size={32} color={color} />,
             }}
           />
@@ -69,6 +75,7 @@ export default function TabNavigator() {
             name="MY STAFF"
             component={StaffScreen}
             options={{
+              tabBarLabel: t('nav.staff'),
               tabBarIcon: ({ color }) => <Users size={32} color={color} />,
             }}
           />
@@ -76,6 +83,7 @@ export default function TabNavigator() {
             name="REPORTS"
             component={AttendanceReportScreen}
             options={{
+              tabBarLabel: t('nav.reports'),
               tabBarIcon: ({ color }) => <CalendarCheck size={32} color={color} />,
             }}
           />

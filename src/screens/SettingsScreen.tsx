@@ -49,7 +49,6 @@ export default function SettingsScreen({ navigation }: any) {
           <User size={40} color={Colors.surface} />
         </View>
         <Text style={styles.profileName}>Darshan Patel</Text>
-        <Text style={styles.profileEmail}>darshan.p@greencity.gov</Text>
         <TouchableOpacity style={styles.editButton}>
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
@@ -109,11 +108,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: Colors.text,
-  },
-  profileEmail: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.md,
   },
   editButton: {
     paddingHorizontal: Spacing.lg,

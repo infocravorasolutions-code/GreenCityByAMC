@@ -10,14 +10,22 @@ import {
   ScrollView,
   SafeAreaView
 } from 'react-native';
-import { Users, CheckCircle, XCircle, Clock, Calendar, RefreshCcw } from 'lucide-react-native';
+import { Users, CheckCircle, XCircle, Clock, Calendar, RefreshCcw, MapPin, ChevronDown, CheckCircle2 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { managerService } from '../services/managerService';
+import { useAuth } from '../context/AuthContext';
+import { useTranslation } from '../context/LanguageContext';
+import { Modal } from 'react-native';
 
 export default function AttendanceReportScreen() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  const { user, selectedZone, setSelectedZone } = useAuth();
+  const userZones = user?.zones || (user as any)?.supervisorZones || [];
+  const [showZonePicker, setShowZonePicker] = useState(false);
 
   // Dashboard Metrics
   const [stats, setStats] = useState({
@@ -38,7 +46,7 @@ export default function AttendanceReportScreen() {
 
   useEffect(() => {
     fetchReports();
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, selectedZone]);
 
   const fetchReports = async () => {
     try {
@@ -124,8 +132,21 @@ export default function AttendanceReportScreen() {
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
           <View>
-            <Text style={styles.headerTitle}>Team Attendance</Text>
-            <Text style={styles.headerSubtitle}>Monitor your team's attendance records</Text>
+            <Text style={styles.headerTitle}>{t('reports.title')}</Text>
+            {user?.role === 'supervisor' && userZones.length > 1 ? (
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }} onPress={() => setShowZonePicker(true)}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{selectedZone || t('attendance.selectZone')}</Text>
+                <ChevronDown size={14} color={Colors.primary} style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
+            ) : user?.role === 'supervisor' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{user?.zoneLabel || user?.zone || 'Ward'}</Text>
+              </View>
+            ) : (
+              <Text style={styles.headerSubtitle}>Monitor your team's attendance records</Text>
+            )}
           </View>
           <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
             <RefreshCcw size={16} color={Colors.textSecondary} />
@@ -195,7 +216,7 @@ export default function AttendanceReportScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsContainer}>
               <View style={[styles.metricCard, styles.cardShadow]}>
                 <View>
-                  <Text style={styles.metricLabel}>Total Records</Text>
+                  <Text style={styles.metricLabel}>{t('reports.total')}</Text>
                   <Text style={[styles.metricValue, { color: Colors.text }]}>{stats.total}</Text>
                 </View>
                 <Users size={28} color={Colors.textSecondary} />
@@ -203,7 +224,7 @@ export default function AttendanceReportScreen() {
 
               <View style={[styles.metricCard, styles.cardShadow]}>
                 <View>
-                  <Text style={styles.metricLabel}>Present</Text>
+                  <Text style={styles.metricLabel}>{t('reports.present')}</Text>
                   <Text style={[styles.metricValue, { color: Colors.success }]}>{stats.present}</Text>
                 </View>
                 <CheckCircle size={28} color={Colors.success} />
@@ -211,7 +232,7 @@ export default function AttendanceReportScreen() {
 
               <View style={[styles.metricCard, styles.cardShadow]}>
                 <View>
-                  <Text style={styles.metricLabel}>Absent</Text>
+                  <Text style={styles.metricLabel}>{t('reports.absent')}</Text>
                   <Text style={[styles.metricValue, { color: Colors.error }]}>{stats.absent}</Text>
                 </View>
                 <XCircle size={28} color={Colors.error} />
@@ -232,31 +253,26 @@ export default function AttendanceReportScreen() {
           </View>
         )}
         ListEmptyComponent={() => (
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <Calendar size={48} color={Colors.border} />
-            <Text style={{ color: Colors.textSecondary, marginTop: 10 }}>No attendance records found.</Text>
+          <View style={{ alignItems: 'center', marginTop: 60, paddingHorizontal: 20 }}>
+            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Clock size={40} color="#94a3b8" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 8 }}>No Attendance Records</Text>
+            <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center' }}>No records found for the selected filters.</Text>
           </View>
         )}
         renderItem={({ item }) => {
           // Robust date/time fallback extraction
           const empName = item.employeeId?.name || item.employee?.name || item.name || 'Unknown';
-          const empCode = item.employeeId?.empCode || item.employee?.empCode || item.empCode || '-';
 
-          let stepInFormatted = '--:--';
-          let stepOutFormatted = '--:--';
-
-          const formatTime = (timeObj: any) => {
-            if (!timeObj) return null;
-            if (typeof timeObj === 'string') {
-              if (timeObj.includes('T')) return new Date(timeObj).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              return timeObj;
-            }
-            if (timeObj.time) return timeObj.time;
-            return null;
+          const formatTotalTime = (minutes: any) => {
+            if (minutes === null || minutes === undefined || isNaN(Number(minutes))) return '-';
+            const num = Number(minutes);
+            if (num < 0) return '-';
+            const hrs = Math.floor(num / 60);
+            const mins = Math.floor(num % 60);
+            return `${hrs} hrs ${mins} min`;
           };
-
-          stepInFormatted = formatTime(item.stepInTime) || formatTime(item.stepIn) || '--:--';
-          stepOutFormatted = formatTime(item.stepOutTime) || formatTime(item.stepOut) || '--:--';
 
           return (
             <View style={styles.tableRow}>
@@ -268,7 +284,6 @@ export default function AttendanceReportScreen() {
                 </View>
                 <View>
                   <Text style={styles.empName}>{empName}</Text>
-                  <Text style={styles.empCode}>{empCode}</Text>
                 </View>
               </View>
 
@@ -283,31 +298,57 @@ export default function AttendanceReportScreen() {
                   {renderBadge(item.shift)}
                 </View>
 
-                <View style={styles.metricCol}>
-                  <Text style={styles.metricHeader}>Step In</Text>
-                  <Text style={[styles.metricData, { fontWeight: '700' }]}>{stepInFormatted}</Text>
-                </View>
 
-                <View style={styles.metricCol}>
-                  <Text style={styles.metricHeader}>Step Out</Text>
-                  <Text style={[styles.metricData, { fontWeight: '700' }]}>{stepOutFormatted}</Text>
-                </View>
 
                 <View style={styles.metricCol}>
                   <Text style={styles.metricHeader}>Status</Text>
                   {renderBadge(item.status || 'Present')}
                 </View>
-              </ScrollView>
-
-              {(item.note || item.stepInNote) && (
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteText}>Note: {item.note || item.stepInNote}</Text>
+                <View style={styles.metricCol}>
+                  <Text style={styles.metricHeader}>Total Time</Text>
+                  <Text style={[styles.metricData, { fontWeight: '700' }]}>{formatTotalTime(item.totalTime)}</Text>
                 </View>
-              )}
+                {user?.role === 'supervisor' && (
+                  <View style={[styles.metricCol, { maxWidth: 200 }]}>
+                    <Text style={styles.metricHeader}>Location</Text>
+                    <Text style={styles.metricData} numberOfLines={2}>
+                      {item.address || 'N/A'}
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
             </View>
           );
         }}
       />
+
+      {/* Zone Picker Modal */}
+      <Modal visible={showZonePicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowZonePicker(false)}>
+          <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('attendance.selectZone')}</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {userZones.map((zoneOption: string) => (
+                <TouchableOpacity
+                  key={zoneOption}
+                  style={styles.zoneItem}
+                  onPress={() => {
+                    setSelectedZone(zoneOption);
+                    setShowZonePicker(false);
+                  }}
+                >
+                  <Text style={[styles.zoneItemText, selectedZone === zoneOption && styles.zoneItemTextSelected]}>
+                    {zoneOption}
+                  </Text>
+                  {selectedZone === zoneOption && <CheckCircle2 size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
     </SafeAreaView>
   );
@@ -523,17 +564,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'capitalize',
   },
-  noteBox: {
-    marginTop: Spacing.md,
-    backgroundColor: '#f8fafc',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  noteText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    color: Colors.textSecondary,
-  }
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  zoneItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  zoneItemText: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  zoneItemTextSelected: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
 });

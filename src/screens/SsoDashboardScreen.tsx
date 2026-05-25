@@ -8,7 +8,9 @@ import {
   RefreshControl,
   StatusBar,
   useWindowDimensions,
-  Alert
+  Alert,
+  Modal,
+  FlatList
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -24,7 +26,11 @@ import {
   BarChart2,
   History,
   LogOut,
-  Truck
+  Truck,
+  ChevronDown,
+  Users,
+  CalendarCheck,
+  ClipboardList
 } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
@@ -32,8 +38,11 @@ import { ssoService, CcrTicket } from '../services/ssoService';
 
 export default function SsoDashboardScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
-  const { user, logout } = useAuth();
+  const { user, logout, selectedZone, setSelectedZone } = useAuth();
   const isSupervisor = user?.role === 'supervisor';
+  const userZones = user?.zones || (user as any)?.supervisorZones || [];
+  const hasMultipleZones = userZones.length > 1;
+  const [showZonePicker, setShowZonePicker] = useState(false);
   
   const isSmallScreen = width < 420;
   const cardWidth = isSmallScreen 
@@ -46,9 +55,10 @@ export default function SsoDashboardScreen({ navigation }: any) {
 
   const fetchData = useCallback(async () => {
     try {
+      const zoneParam = selectedZone || undefined;
       const [tickets, vehiclesData] = await Promise.all([
-        ssoService.getTickets(true),
-        ssoService.getLiveLocations()
+        ssoService.getTickets(true, zoneParam),
+        ssoService.getLiveLocations(zoneParam)
       ]);
       setStats({
         vehicles: vehiclesData.length,
@@ -63,7 +73,7 @@ export default function SsoDashboardScreen({ navigation }: any) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedZone]);
 
   useEffect(() => {
     fetchData();
@@ -97,10 +107,21 @@ export default function SsoDashboardScreen({ navigation }: any) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greetingText}>Hello, {(user?.fullName || user?.name || 'Officer').split(' ')[0]}</Text>
-          <View style={styles.zoneWrapper}>
-            <MapPin size={12} color={Colors.primary} />
-            <Text style={styles.zoneText}>{user?.zone || (isSupervisor ? 'Ward Supervisor' : 'Zone Officer')}</Text>
-          </View>
+          {hasMultipleZones ? (
+            <TouchableOpacity 
+              style={styles.zoneWrapper} 
+              onPress={() => setShowZonePicker(true)}
+            >
+              <MapPin size={12} color={Colors.primary} />
+              <Text style={styles.zoneText}>{selectedZone || 'Select Zone'}</Text>
+              <ChevronDown size={14} color={Colors.primary} style={{ marginLeft: 2 }} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.zoneWrapper}>
+              <MapPin size={12} color={Colors.primary} />
+              <Text style={styles.zoneText}>{user?.zoneLabel || user?.zone || (isSupervisor ? 'Ward Supervisor' : 'Zone Officer')}</Text>
+            </View>
+          )}
         </View>
         <TouchableOpacity style={[styles.iconButton, { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1 }]} onPress={handleLogout}>
           <LogOut size={24} color={Colors.error} />
@@ -211,6 +232,53 @@ export default function SsoDashboardScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
+        {/* Team Management */}
+        {isSupervisor && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Team Management</Text>
+            </View>
+            <View style={styles.quickActionsGrid}>
+              <TouchableOpacity 
+                style={styles.actionCard} 
+                onPress={() => navigation.navigate('MY STAFF')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#E0F2FE' }]}>
+                  <Users size={22} color="#0284C7" />
+                </View>
+                <Text style={styles.actionLabel}>My Team</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard} 
+                onPress={() => navigation.navigate('ATTENDANCE')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#DCFCE7' }]}>
+                  <CalendarCheck size={22} color="#16A34A" />
+                </View>
+                <Text style={styles.actionLabel}>Step In/Out</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard} 
+                onPress={() => navigation.navigate('REPORTS')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#F3E8FF' }]}>
+                  <ClipboardList size={22} color="#9333EA" />
+                </View>
+                <Text style={styles.actionLabel}>Reports</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard} 
+                onPress={() => navigation.navigate('SsoManagers')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#FFEDD5' }]}>
+                  <ShieldCheck size={22} color="#EA580C" />
+                </View>
+                <Text style={styles.actionLabel}>Managers</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         {/* Recent Tickets */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Tickets</Text>
@@ -256,6 +324,34 @@ export default function SsoDashboardScreen({ navigation }: any) {
           <PlusCircle size={32} color={Colors.surface} />
         </TouchableOpacity>
       )}
+
+      {/* Zone Picker Modal */}
+      <Modal visible={showZonePicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowZonePicker(false)}>
+          <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Zone</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {userZones.map((zoneOption: string) => (
+                <TouchableOpacity
+                  key={zoneOption}
+                  style={styles.zoneItem}
+                  onPress={() => {
+                    setSelectedZone(zoneOption);
+                    setShowZonePicker(false);
+                  }}
+                >
+                  <Text style={[styles.zoneItemText, selectedZone === zoneOption && styles.zoneItemTextSelected]}>
+                    {zoneOption}
+                  </Text>
+                  {selectedZone === zoneOption && <CheckCircle2 size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -483,5 +579,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  zoneItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  zoneItemText: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  zoneItemTextSelected: {
+    color: Colors.primary,
+    fontWeight: '800',
   },
 });

@@ -9,45 +9,56 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  RefreshControl
+  RefreshControl,
+  StatusBar
 } from 'react-native';
 import {
   Users,
   CalendarCheck,
   BarChart3,
   LogOut,
+  AlertTriangle,
   ChevronRight,
-  AlertTriangle
+  Globe
 } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { managerService } from '../services/managerService';
+import { useTranslation } from '../context/LanguageContext';
 
 const { width } = Dimensions.get('window');
+const CARD_WIDTH = (width - (Spacing.md * 2) - Spacing.md) / 2;
 
-const MassiveActionCard = ({ title, subTitle, gujaratiText, icon: Icon, color, onPress }: any) => (
-  <TouchableOpacity
-    style={[styles.massiveCard, { borderBottomColor: color }]}
-    onPress={onPress}
-    activeOpacity={0.8}
-  >
-    <View style={[styles.iconCircle, { backgroundColor: `${color}15` }]}>
-      <Icon size={40} color={color} />
-    </View>
-    <View style={styles.cardContent}>
-      <Text style={[styles.gujaratiText, { color }]}>{gujaratiText}</Text>
-      <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.cardSubTitle}>{subTitle}</Text>
-    </View>
-    <ChevronRight size={32} color={Colors.border} />
-  </TouchableOpacity>
+const GridActionCard = ({ title, translatedText, icon: Icon, color, onPress }: any) => (
+  <View>
+    <TouchableOpacity
+      style={styles.gridCard}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.gridIconCircle, { backgroundColor: `${color}15` }]}>
+        <Icon size={24} color={color} strokeWidth={2.5} />
+      </View>
+      <View style={styles.gridTextContainer}>
+        <Text style={styles.gridTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.gridTranslated} numberOfLines={1}>{translatedText}</Text>
+      </View>
+    </TouchableOpacity>
+  </View>
 );
 
 export default function DashboardScreen({ navigation }: any) {
   const { user, logout } = useAuth();
+  const { language, setLanguage, t } = useTranslation();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const toggleLanguage = () => {
+    if (language === 'en') setLanguage('gu');
+    else if (language === 'gu') setLanguage('hi');
+    else setLanguage('en');
+  };
 
   useEffect(() => {
     fetchSummary();
@@ -73,10 +84,10 @@ export default function DashboardScreen({ navigation }: any) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout (લોગઆઉટ)', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('dashboard.logout'), t('dashboard.logoutConfirm'), [
+      { text: t('dashboard.cancel'), style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: t('dashboard.logout'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -89,7 +100,7 @@ export default function DashboardScreen({ navigation }: any) {
     ]);
   };
 
-  if (loading) {
+  if (loading && !summary) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -99,14 +110,26 @@ export default function DashboardScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.greeting}>સ્વાગત છે (Welcome),</Text>
-          <Text style={styles.userName}>{user?.fullName || 'Manager'}</Text>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      
+      {/* Modern Compact Header */}
+      <View style={styles.headerArea}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.greeting}>{t('dashboard.hello')}</Text>
+            <Text style={styles.userName} numberOfLines={1}>{user?.fullName || 'Manager'}</Text>
+            <Text style={styles.roleText}>Manager Portal</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.langBtn} onPress={toggleLanguage}>
+              <Globe size={16} color={Colors.surface} style={{ marginRight: 6 }} />
+              <Text style={styles.langBtnText}>{language.toUpperCase()}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+              <LogOut size={20} color={Colors.surface} />
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <LogOut size={24} color={Colors.error} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -116,59 +139,74 @@ export default function DashboardScreen({ navigation }: any) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
-        
-        {/* Massive Stats Display */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statBox, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
-            <Text style={[styles.statNumber, { color: '#1d4ed8' }]}>{summary?.totalEmployees || 0}</Text>
-            <Text style={styles.statLabelGu}>સ્ટાફ (Staff)</Text>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: '#ecfdf5', borderColor: '#bbf7d0' }]}>
-            <Text style={[styles.statNumber, { color: '#15803d' }]}>{summary?.attendanceToday || 0}</Text>
-            <Text style={styles.statLabelGu}>હાજર (Present)</Text>
+        {/* Unified Sleek Stats Card */}
+        <View style={styles.unifiedStatsContainer}>
+          <View style={styles.unifiedStatsCard}>
+            <View style={styles.statSection}>
+              <View style={styles.statHeader}>
+                <Users size={16} color={Colors.primary} />
+                <Text style={styles.statLabel}>{t('nav.staff')}</Text>
+              </View>
+              <Text style={styles.statNumber}>{summary?.totalEmployees || 0}</Text>
+            </View>
+            
+            <View style={styles.statDivider} />
+            
+            <View style={styles.statSection}>
+              <View style={styles.statHeader}>
+                <CalendarCheck size={16} color={Colors.success} />
+                <Text style={styles.statLabel}>{t('staff.present')}</Text>
+              </View>
+              <Text style={styles.statNumber}>{summary?.attendanceToday || 0}</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.actionsContainer}>
-          <MassiveActionCard
-            title="ATTENDANCE"
-            subTitle="Mark In / Mark Out"
-            gujaratiText="હાજરી ભરો"
-            icon={CalendarCheck}
-            color={Colors.success}
-            onPress={() => navigation.navigate('STEP IN/OUT')}
-          />
+        {/* Refined Quick Actions Grid */}
+        <View style={styles.gridSection}>
+          <Text style={styles.sectionTitle}>{t('dashboard.quickActions')}</Text>
           
-          <MassiveActionCard
-            title="MY TASKS"
-            subTitle="View CCR Tickets"
-            gujaratiText="મારા કામ"
-            icon={AlertTriangle}
-            color={Colors.error}
-            onPress={() => navigation.navigate('ManagerCcrList')}
-          />
+          <View style={styles.gridContainer}>
+            <GridActionCard
+              title="Attendance"
+              translatedText={t('attendance.stepInOut')}
+              icon={CalendarCheck}
+              color={Colors.success}
+              delay={200}
+              onPress={() => navigation.navigate('STEP IN/OUT')}
+            />
+            
+            <GridActionCard
+              title="My Tasks"
+              translatedText={t('dashboard.wardTasks')}
+              icon={AlertTriangle}
+              color={Colors.error}
+              delay={300}
+              onPress={() => navigation.navigate('ManagerCcrList')}
+            />
 
-          <MassiveActionCard
-            title="MY STAFF"
-            subTitle="View Employees"
-            gujaratiText="મારો સ્ટાફ"
-            icon={Users}
-            color={Colors.primary}
-            onPress={() => navigation.navigate('MY STAFF')}
-          />
+            <GridActionCard
+              title="My Staff"
+              translatedText={t('nav.staff')}
+              icon={Users}
+              color={Colors.primary}
+              delay={400}
+              onPress={() => navigation.navigate('MY STAFF')}
+            />
 
-          <MassiveActionCard
-            title="REPORTS"
-            subTitle="History & Data"
-            gujaratiText="રિપોર્ટ્સ જુઓ"
-            icon={BarChart3}
-            color={Colors.warning}
-            onPress={() => navigation.navigate('REPORTS')}
-          />
+            <GridActionCard
+              title="Reports"
+              translatedText={t('nav.reports')}
+              icon={BarChart3}
+              color={Colors.warning}
+              delay={500}
+              onPress={() => navigation.navigate('REPORTS')}
+            />
+          </View>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Green City AMC Portal</Text>
+          <Text style={styles.footerText}>Green City AMC v1.0.0</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -184,114 +222,166 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  topBar: {
+  headerArea: {
+    backgroundColor: Colors.primary,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: Spacing.lg,
-    paddingTop: Spacing.xl,
-    backgroundColor: Colors.surface,
-    ...Shadows.soft,
-    zIndex: 10,
   },
   headerTextWrap: {
     flex: 1,
+    paddingRight: Spacing.md,
   },
   greeting: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+    marginBottom: 2,
   },
   userName: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: Colors.text,
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.surface,
+    letterSpacing: -0.5,
+    marginBottom: 2,
+  },
+  roleText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  langBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: BorderRadius.full,
+    marginRight: 12,
+  },
+  langBtnText: {
+    fontWeight: '700',
+    color: Colors.surface,
+    fontSize: 13,
   },
   logoutBtn: {
-    padding: 12,
-    backgroundColor: '#fef2f2',
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: '#fecaca',
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: BorderRadius.full,
   },
   scrollContent: {
     paddingBottom: 40,
   },
-  statsContainer: {
+  unifiedStatsContainer: {
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.xl,
+  },
+  unifiedStatsCard: {
     flexDirection: 'row',
-    padding: Spacing.md,
-    gap: Spacing.md,
-    marginTop: Spacing.sm,
-  },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xl,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    ...Shadows.soft,
-  },
-  statNumber: {
-    fontSize: 48,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  statLabelGu: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-  },
-  actionsContainer: {
-    padding: Spacing.md,
-  },
-  massiveCard: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    borderBottomWidth: 6,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
     ...Shadows.card,
+    elevation: 4,
   },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  statSection: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.lg,
   },
-  cardContent: {
-    flex: 1,
+  statHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  gujaratiText: {
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 4,
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginLeft: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  cardTitle: {
-    fontSize: 18,
+  statNumber: {
+    fontSize: 28,
     fontWeight: '800',
+    color: Colors.text,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.sm,
+  },
+  gridSection: {
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.xxl,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+    marginBottom: Spacing.lg,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+    justifyContent: 'space-between',
+  },
+  gridCard: {
+    width: CARD_WIDTH,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    ...Shadows.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.02)',
+  },
+  gridIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  gridTextContainer: {
+    marginTop: 4,
+  },
+  gridTitle: {
+    fontSize: 15,
+    fontWeight: '700',
     color: Colors.text,
     marginBottom: 2,
   },
-  cardSubTitle: {
-    fontSize: 14,
+  gridTranslated: {
+    fontSize: 13,
+    fontWeight: '500',
     color: Colors.textSecondary,
-    fontWeight: '600',
   },
   footer: {
     padding: Spacing.xl,
     alignItems: 'center',
+    marginTop: Spacing.xl,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondary,
-    fontWeight: '700',
+    fontWeight: '600',
     opacity: 0.5,
   },
 });
-

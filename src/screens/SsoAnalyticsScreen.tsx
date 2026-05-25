@@ -28,7 +28,7 @@ const formatTripTime = (timeString?: string) => {
 };
 
 export default function SsoAnalyticsScreen({ navigation }: any) {
-  const { user } = useAuth();
+  const { user, selectedZone } = useAuth();
   const isSupervisor = user?.role === 'supervisor';
   
   const todayStr = new Date().toISOString().split('T')[0];
@@ -70,17 +70,17 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchVehicles();
-  }, []);
+  }, [selectedZone]);
 
   useEffect(() => {
     if (selectedVehicleId) {
       fetchTripData(selectedVehicleId);
     }
-  }, [selectedVehicleId, selectedDate]);
+  }, [selectedVehicleId, selectedDate, selectedZone]);
 
   const fetchVehicles = async () => {
     try {
-      const data = await ssoService.getLiveLocations();
+      const data = await ssoService.getLiveLocations(selectedZone || undefined);
       setVehicles(data);
       if (data.length > 0) {
         setSelectedVehicleId(data[0]._id);
@@ -97,7 +97,7 @@ export default function SsoAnalyticsScreen({ navigation }: any) {
     setTripData(null);
     try {
       // SSO role strictly loads today's data (no selectedDate parameter passed to prevent 400 error)
-      const result = await ssoService.getVehicleTrip(vehicleId, isSupervisor ? selectedDate : undefined);
+      const result = await ssoService.getVehicleTrip(vehicleId, isSupervisor ? selectedDate : undefined, selectedZone || undefined);
       setTripData(result);
     } catch (error) {
       console.error('Error fetching trip data:', error);

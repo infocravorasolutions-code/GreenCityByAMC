@@ -45,7 +45,19 @@ class NotificationService {
   }
 
   async getTokenOnly() {
-    return await AsyncStorage.getItem('fcmToken') || await messaging().getToken();
+    try {
+      let fcmToken = await AsyncStorage.getItem('fcmToken');
+      if (fcmToken) return fcmToken;
+      
+      fcmToken = await messaging().getToken();
+      if (fcmToken) {
+        await AsyncStorage.setItem('fcmToken', fcmToken);
+      }
+      return fcmToken;
+    } catch (error) {
+      console.log('Error getting FCM token in getTokenOnly:', error);
+      return null;
+    }
   }
 
   async updateTokenOnBackend(token: string) {

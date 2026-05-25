@@ -23,8 +23,10 @@ import {
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { managerService } from '../services/managerService';
 import { ttsService } from '../services/ttsService';
+import { useTranslation } from '../context/LanguageContext';
 
 export default function ManagerCcrListScreen({ navigation }: any) {
+  const { t } = useTranslation();
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -135,7 +137,7 @@ export default function ManagerCcrListScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft size={28} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Tasks (મારા કામ)</Text>
+        <Text style={styles.headerTitle}>{t('dashboard.wardTasks')}</Text>
         <View style={{ width: 40 }} />
       </View>
 

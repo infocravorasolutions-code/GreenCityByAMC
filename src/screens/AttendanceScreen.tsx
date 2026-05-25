@@ -14,9 +14,9 @@ import {
   Platform,
   PermissionsAndroid,
   RefreshControl,
-  Modal,
-  SafeAreaView
+  Modal
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Search,
   Camera as CameraIcon,
@@ -24,7 +24,11 @@ import {
   RefreshCw,
   LogOut,
   LogIn,
-  Check
+  Check,
+  CheckCircle2,
+  MapPin,
+  ChevronDown,
+  Users
 } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
@@ -42,6 +46,8 @@ import { managerService } from '../services/managerService';
 import { attendanceService } from '../services/attendanceService';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
+import { useAuth } from '../context/AuthContext';
+import { useTranslation } from '../context/LanguageContext';
 
 const Avatar = ({ item }: { item: any }) => {
   const [imgError, setImgError] = useState(false);
@@ -79,10 +85,15 @@ const Avatar = ({ item }: { item: any }) => {
 };
 
 export default function AttendanceScreen() {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [employees, setEmployees] = useState<any[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<any[]>([]);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { user, selectedZone, setSelectedZone } = useAuth();
+  const userZones = user?.zones || (user as any)?.supervisorZones || [];
+  const [showZonePicker, setShowZonePicker] = useState(false);
 
   // Loading States
   const [loading, setLoading] = useState(true);
@@ -103,7 +114,9 @@ export default function AttendanceScreen() {
 
   useEffect(() => {
     fetchEmployees();
-  }, []);
+    // Fetch GPS once when screen loads, just like the employee side!
+    fetchGPSAsync();
+  }, [selectedZone]);
 
   const getISTDateStr = (d: Date) => {
     // IST is UTC + 5:30
@@ -124,7 +137,7 @@ export default function AttendanceScreen() {
       // Fetch both Lists in parallel for perfect sync
       const [empResponse, attendanceResponse] = await Promise.all([
         managerService.getEmployees(),
-        attendanceService.getAttendanceList(yesterdayStr, todayStr)
+        managerService.getStats(yesterdayStr, todayStr)
       ]);
 
       // Normalize Employee Data
@@ -228,8 +241,7 @@ export default function AttendanceScreen() {
     setSearch(text);
     if (text) {
       const filtered = dataToFilter.filter(emp =>
-        (emp.name && emp.name.toLowerCase().includes(text.toLowerCase())) ||
-        (emp.empCode && emp.empCode.toLowerCase().includes(text.toLowerCase()))
+        (emp.name && emp.name.toLowerCase().includes(text.toLowerCase()))
       );
       setFilteredEmployees(filtered);
     } else {
@@ -245,8 +257,7 @@ export default function AttendanceScreen() {
     searchTimeoutRef.current = setTimeout(() => {
       if (text) {
         const filtered = employees.filter(emp =>
-          (emp.name && emp.name.toLowerCase().includes(text.toLowerCase())) ||
-          (emp.empCode && emp.empCode.toLowerCase().includes(text.toLowerCase()))
+          (emp.name && emp.name.toLowerCase().includes(text.toLowerCase()))
         );
         setFilteredEmployees(filtered);
       } else {
@@ -258,8 +269,6 @@ export default function AttendanceScreen() {
   const resetForm = () => {
     setSelectedEmployee(null);
     setPhoto(null);
-    setLocationText('');
-    setRawCoords(null);
     setNote('');
     setModalVisible(false);
   };
@@ -268,8 +277,12 @@ export default function AttendanceScreen() {
     setSelectedEmployee(emp);
     setModalVisible(true);
 
-    // Trigger GPS asynchronously. Do NOT block the UI.
-    fetchGPSAsync();
+    // If we don't have location yet (or it failed) AND we aren't currently fetching, try again.
+    if (!rawCoords || !locationText) {
+      if (!fetchingLocation) {
+        fetchGPSAsync();
+      }
+    }
   };
 
   const fetchGPSAsync = async () => {
@@ -302,9 +315,7 @@ export default function AttendanceScreen() {
     // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
     const fallbackTimeout = setTimeout(() => {
       setFetchingLocation(false);
-      if (locationText === 'Locating automatically...') {
-         setLocationText('');
-      }
+      setLocationText(prev => prev === 'Locating automatically...' ? '' : prev);
     }, 8000);
 
     Geolocation.getCurrentPosition(
@@ -329,7 +340,7 @@ export default function AttendanceScreen() {
       (error) => {
         clearTimeout(fallbackTimeout);
         console.warn(`[GPS ERROR] ${error.message}`);
-        setLocationText(''); // Failed, let them type
+        setLocationText(prev => prev === 'Locating automatically...' ? '' : prev); // Failed, let them type
         setFetchingLocation(false);
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 5000 }
@@ -441,13 +452,34 @@ export default function AttendanceScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header Area */}
+      <View style={styles.header}>
+        <View style={styles.headerTitleRow}>
+          <View>
+            <Text style={styles.headerTitle}>{t('attendance.stepInOut')}</Text>
+            {user?.role === 'supervisor' && userZones.length > 1 ? (
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }} onPress={() => setShowZonePicker(true)}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{selectedZone || t('attendance.selectZone')}</Text>
+                <ChevronDown size={14} color={Colors.primary} style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
+            ) : user?.role === 'supervisor' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{user?.zoneLabel || user?.zone || 'Ward'}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </View>
+
       <View style={styles.searchSection}>
-        <Text style={styles.instruction}>Select Employee for Attendance</Text>
+        <Text style={styles.instruction}>{t('attendance.selectEmployee')}</Text>
         <View style={styles.searchWrapper}>
           <Search size={24} color={Colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search Name or Code..."
+            placeholder={t('attendance.searchPlaceholder')}
             value={search}
             onChangeText={onSearchChangeText}
           />
@@ -464,6 +496,15 @@ export default function AttendanceScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
           }
+          ListEmptyComponent={() => (
+            <View style={{ alignItems: 'center', marginTop: 60, paddingHorizontal: 20 }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <Users size={40} color="#94a3b8" />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 8 }}>No Employees Found</Text>
+              <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center' }}>No employees found matching your criteria.</Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.employeeItem}
@@ -476,7 +517,6 @@ export default function AttendanceScreen() {
               <Avatar item={item} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.employeeName}>{item.name}</Text>
-                <Text style={styles.employeeCode}>{item.empCode}</Text>
               </View>
               {/* Prioritize active attendance record over isWorking flag if available */}
               {item.isWorking ? (
@@ -486,7 +526,7 @@ export default function AttendanceScreen() {
               ) : (
                 <View style={[styles.stepInAction, item.hasCompletedShift && { backgroundColor: Colors.border }]}>
                   <Text style={[styles.stepActionText, item.hasCompletedShift && { color: Colors.textSecondary }]}>
-                    {item.hasCompletedShift ? 'COMPLETED' : 'STEP IN'}
+                    {item.hasCompletedShift ? 'COMPLETED' : t('attendance.stepInBtn')}
                   </Text>
                 </View>
               )}
@@ -526,9 +566,9 @@ export default function AttendanceScreen() {
                 <View style={styles.modalHeader}>
                   <View>
                     <Text style={styles.modalTitle}>
-                      {selectedEmployee?.isWorking ? 'Step Out' : 'Step In'} - {selectedEmployee?.name}
+                      {selectedEmployee?.isWorking ? t('attendance.stepOutBtn') : t('attendance.stepInBtn')} - {selectedEmployee?.name}
                     </Text>
-                    <Text style={styles.modalSubtitle}>Capture photo and enter details</Text>
+                    <Text style={styles.modalSubtitle}>{t('attendance.photoInstruction')}</Text>
                   </View>
                   <TouchableOpacity onPress={resetForm} style={styles.closeBtn}>
                     <X size={24} color={Colors.textSecondary} />
@@ -555,7 +595,7 @@ export default function AttendanceScreen() {
                     ) : (
                       <View style={styles.emptyCamera}>
                         <CameraIcon size={48} color={Colors.textSecondary} />
-                        <Text style={styles.emptyCameraText}>Tap to open camera</Text>
+                        <Text style={styles.emptyCameraText}>{t('attendance.takingPhoto')}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -607,7 +647,7 @@ export default function AttendanceScreen() {
                           <LogIn size={20} color={Colors.surface} />
                         )}
                         <Text style={styles.submitBtnText}>
-                          {selectedEmployee?.isWorking ? 'Step Out' : 'Step In'}
+                          {selectedEmployee?.isWorking ? t('attendance.stepOutBtn') : t('attendance.stepInBtn')}
                         </Text>
                       </View>
                     )}
@@ -619,6 +659,33 @@ export default function AttendanceScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Zone Picker Modal */}
+      <Modal visible={showZonePicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.zonePickerOverlay} onPress={() => setShowZonePicker(false)}>
+          <View style={[styles.zonePickerContent, { height: 'auto', paddingBottom: 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('attendance.selectZone')}</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {userZones.map((zoneOption: string) => (
+                <TouchableOpacity
+                  key={zoneOption}
+                  style={styles.zoneItem}
+                  onPress={() => {
+                    setSelectedZone(zoneOption);
+                    setShowZonePicker(false);
+                  }}
+                >
+                  <Text style={[styles.zoneItemText, selectedZone === zoneOption && styles.zoneItemTextSelected]}>
+                    {zoneOption}
+                  </Text>
+                  {selectedZone === zoneOption && <CheckCircle2 size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
     </SafeAreaView>
   );
@@ -629,6 +696,22 @@ const styles = StyleSheet.create({
     flex: 1,
     top: 30,
     backgroundColor: Colors.background,
+  },
+  header: {
+    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
   },
   centerContent: {
     alignItems: 'center',
@@ -670,12 +753,10 @@ const styles = StyleSheet.create({
   employeeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.sm,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    padding: 10,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
   },
   photoSmall: {
     width: 40,
@@ -918,5 +999,33 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: Colors.success,
+  },
+  zonePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  zonePickerContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  },
+  zoneItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  zoneItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  zoneItemTextSelected: {
+    color: Colors.primary,
+    fontWeight: '800',
   }
 });

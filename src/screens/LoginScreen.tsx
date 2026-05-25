@@ -89,9 +89,7 @@ export default function LoginScreen({ navigation }: any) {
 
       console.log(`[Auto-Detected Login Success] Role: ${successfulAuth.role}`, JSON.stringify(successfulAuth.res, null, 2));
 
-      if (successfulAuth.role === 'admin') {
-        throw new Error('ઍડમિન રોલે વેબ પેનલ દ્વારા લોગીન કરવું આવશ્યક છે. (Admin role must login via the Web Panel.)');
-      }
+      // Admin login is now permitted on the mobile app for GPS tracking purposes
 
       if (successfulAuth.res && successfulAuth.res.token) {
         await login(successfulAuth.res.token, successfulAuth.res.user);

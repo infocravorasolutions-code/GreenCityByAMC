@@ -30,21 +30,21 @@ const getRolePath = async (): Promise<string> => {
 };
 
 export const ssoService = {
-  getTickets: async (today?: boolean) => {
+  getTickets: async (today?: boolean, zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/ccr`, { params: { today: today ? 'true' : undefined } });
+    const response = await api.get(`${path}/ccr`, { params: { today: today ? 'true' : undefined, zone } });
     return response.data.ccrs as CcrTicket[];
   },
 
-  getVehicles: async () => {
+  getVehicles: async (zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/vehicles`);
+    const response = await api.get(`${path}/vehicles`, { params: { zone } });
     return response.data.vehicles;
   },
 
-  getTicketById: async (id: string) => {
+  getTicketById: async (id: string, zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/ccr/${id}`);
+    const response = await api.get(`${path}/ccr/${id}`, { params: { zone } });
     return response.data.ccr as CcrTicket;
   },
 
@@ -91,39 +91,75 @@ export const ssoService = {
     return response.data.ccr;
   },
 
-  getLiveLocations: async () => {
+  getLiveLocations: async (zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/today/vehicles`);
+    const response = await api.get(`${path}/today/vehicles`, { params: { zone } });
     return response.data.items || response.data.locations || response.data.vehicles || [];
   },
 
-  getTripAnalytics: async () => {
+  getTripAnalytics: async (zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/analytics/trips`);
+    const response = await api.get(`${path}/analytics/trips`, { params: { zone } });
     return response.data.analytics;
   },
 
-  getVehicleTrip: async (vehicleId: string, date?: string) => {
+  getVehicleTrip: async (vehicleId: string, date?: string, zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/today/vehicles/${vehicleId}/trip`, { params: { date } });
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/trip`, { params: { date, zone } });
     return response.data;
   },
 
-  getHistory: async (params?: { startDate?: string; endDate?: string; type?: string }) => {
+  getHistory: async (params?: { startDate?: string; endDate?: string; type?: string; zone?: string }) => {
     const path = await getRolePath();
     const response = await api.get(`${path}/history`, { params });
     return response.data.history || [];
   },
 
-  getVehicleHistory: async (vehicleId: string, date?: string, limit: number = 200) => {
+  getVehicleHistory: async (vehicleId: string, date?: string, limit: number = 200, zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/today/vehicles/${vehicleId}/history`, { params: { limit, date } });
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/history`, { params: { limit, date, zone } });
     return response.data;
   },
 
-  getVehicleSummary: async (vehicleId: string, date?: string) => {
+  getVehicleSummary: async (vehicleId: string, date?: string, zone?: string) => {
     const path = await getRolePath();
-    const response = await api.get(`${path}/today/vehicles/${vehicleId}/summary`, { params: { date } });
+    const response = await api.get(`${path}/today/vehicles/${vehicleId}/summary`, { params: { date, zone } });
+    return response.data;
+  },
+
+  getManagers: async () => {
+    const path = await getRolePath();
+    const response = await api.get(`${path}/managers`);
+    return response.data.managers || [];
+  },
+
+  getVehiclesForCcr: async () => {
+    const path = await getRolePath();
+    const response = await api.get(`${path}/vehicles-for-ccr`);
+    return response.data.items || [];
+  },
+
+  createManager: async (data: any) => {
+    const path = await getRolePath();
+    const isFormData = data instanceof FormData;
+    const response = await api.post(`${path}/managers`, data, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+    });
+    return response.data.user;
+  },
+
+  updateManager: async (id: string, data: any) => {
+    const path = await getRolePath();
+    const isFormData = data instanceof FormData;
+    const response = await api.put(`${path}/managers/${id}`, data, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+    });
+    return response.data.user;
+  },
+
+  deleteManager: async (id: string) => {
+    const path = await getRolePath();
+    const response = await api.delete(`${path}/managers/${id}`);
     return response.data;
   },
 };

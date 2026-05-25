@@ -12,6 +12,8 @@ import {
   Modal,
   FlatList,
   useWindowDimensions,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Geolocation from '@react-native-community/geolocation';
@@ -36,18 +38,19 @@ import { ssoService } from '../services/ssoService';
 export default function SsoCreateCcrScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
   const [form, setForm] = useState({
-    type: 'Task',
+    type: 'Task Request',
     title: '',
     description: '',
-    priority: 'medium',
+    priority: 'Medium',
     vehicleId: '',
     location: null as any,
-    image: null as any,
   });
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
-  const [selectedVehicleName, setSelectedVehicleName] = useState('Select Vehicle (Optional)');
+  const [showTypePicker, setShowTypePicker] = useState(false);
+  const [showPriorityPicker, setShowPriorityPicker] = useState(false);
+  const [selectedVehicleName, setSelectedVehicleName] = useState('');
 
   useEffect(() => {
     fetchVehicles();
@@ -63,7 +66,22 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
     }
   };
 
-  const requestLocation = () => {
+  const requestLocation = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('[CreateCCR] Location permission denied');
+          return;
+        }
+      } catch (err) {
+        console.warn('[CreateCCR] Permission check error:', err);
+        return;
+      }
+    }
+
     Geolocation.getCurrentPosition(
       (position) => {
         setForm(prev => ({
@@ -74,32 +92,27 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
           }
         }));
       },
-      (error) => console.error('Location error:', error),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      (error) => {
+        console.log('[CreateCCR] High accuracy location failed, trying low accuracy...', error.message);
+        Geolocation.getCurrentPosition(
+          (pos) => {
+            setForm(prev => ({
+              ...prev,
+              location: {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              }
+            }));
+          },
+          (err) => console.log('[CreateCCR] Location fallback error:', err.message),
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
     );
   };
 
-  const handleImagePicker = () => {
-    Alert.alert(
-      'Attach Photo',
-      'Choose an option to attach a photo to this ticket.',
-      [
-        {
-          text: 'Camera',
-          onPress: () => launchCamera({ mediaType: 'photo', quality: 0.7 }, (res) => {
-            if (res.assets?.[0]) setForm(prev => ({ ...prev, image: res.assets![0] }));
-          })
-        },
-        {
-          text: 'Gallery',
-          onPress: () => launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (res) => {
-            if (res.assets?.[0]) setForm(prev => ({ ...prev, image: res.assets![0] }));
-          })
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
-  };
+
 
   const handleSubmit = async () => {
     if (!form.title || !form.description) {
@@ -115,9 +128,14 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
         return;
       }
 
+      let mappedType = 'task';
+      if (form.type === 'Complaint') mappedType = 'complaint';
+      if (form.type === 'Maintenance') mappedType = 'maintenance';
+
       const payload = {
         ...form,
-        type: form.type.toLowerCase() === 'complaint' ? 'complaint' : 'task'
+        type: mappedType,
+        priority: form.priority.toLowerCase(),
       };
 
       console.log('[Create CCR] Sending Payload:', JSON.stringify(payload, null, 2));
@@ -135,12 +153,8 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
     }
   };
 
-  const types = ['Task', 'Complaint', 'Maintenance', 'Safety Violation', 'Accident'];
-  const priorities = [
-    { label: 'Low', value: 'low', color: '#3b82f6' },
-    { label: 'Medium', value: 'medium', color: '#f59e0b' },
-    { label: 'High', value: 'high', color: '#ef4444' }
-  ];
+  const types = ['Task Request', 'Complaint', 'Maintenance'];
+  const priorities = ['Low', 'Medium', 'High'];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -154,29 +168,33 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.formSection}>
-          <Text style={styles.label}>Ticket Type</Text>
-          <View style={styles.typeGrid}>
-            {types.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[styles.typeBadge, form.type === t && styles.typeBadgeActive]}
-                onPress={() => setForm({ ...form, type: t })}
-              >
-                <Text style={[styles.typeText, form.type === t && styles.typeTextActive]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.webLabel}>TYPE</Text>
+          <TouchableOpacity
+            style={styles.webDropdown}
+            onPress={() => setShowTypePicker(true)}
+          >
+            <Text style={styles.webDropdownText}>{form.type}</Text>
+            <ChevronDown size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.inputGroup}>
-          <View style={styles.labelWrapper}>
-            <Type size={16} color={Colors.textSecondary} />
-            <Text style={styles.inputLabel}>Title</Text>
-          </View>
+          <Text style={styles.webLabel}>PRIORITY</Text>
+          <TouchableOpacity
+            style={styles.webDropdown}
+            onPress={() => setShowPriorityPicker(true)}
+          >
+            <Text style={styles.webDropdownText}>{form.priority}</Text>
+            <ChevronDown size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.webLabel}>TITLE</Text>
           <TextInput
-            style={styles.input}
-            placeholder="e.g., Brake Issue in Truck"
+            style={styles.webInput}
+            placeholder="Ticket title"
             placeholderTextColor={Colors.textSecondary}
             value={form.title}
             onChangeText={(v) => setForm({ ...form, title: v })}
@@ -184,13 +202,10 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
         </View>
 
         <View style={styles.inputGroup}>
-          <View style={styles.labelWrapper}>
-            <AlignLeft size={16} color={Colors.textSecondary} />
-            <Text style={styles.inputLabel}>Description</Text>
-          </View>
+          <Text style={styles.webLabel}>DETAILS</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Describe the issue in detail..."
+            style={[styles.webInput, styles.webTextArea]}
+            placeholder="Explain the requirement..."
             placeholderTextColor={Colors.textSecondary}
             multiline
             numberOfLines={4}
@@ -200,77 +215,17 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
         </View>
 
         <View style={styles.inputGroup}>
-          <View style={styles.labelWrapper}>
-            <Truck size={16} color={Colors.textSecondary} />
-            <Text style={styles.inputLabel}>Vehicle (Optional)</Text>
-          </View>
+          <Text style={styles.webLabel}>ASSIGN TO VEHICLE</Text>
           <TouchableOpacity
-            style={styles.pickerTrigger}
+            style={styles.webDropdown}
             onPress={() => setShowVehiclePicker(true)}
           >
-            <Text style={[styles.pickerText, form.vehicleId ? styles.pickerTextSelected : null]}>
-              {selectedVehicleName}
+            <Text style={selectedVehicleName ? styles.webDropdownText : styles.pickerText}>
+              {selectedVehicleName || 'Select Vehicle'}
             </Text>
             <ChevronDown size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-        </View>
-
-        {/* New Attachment Section */}
-        <View style={styles.inputGroup}>
-          <View style={styles.labelWrapper}>
-            <Camera size={16} color={Colors.textSecondary} />
-            <Text style={styles.inputLabel}>Attachments</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.attachmentButton}
-            onPress={handleImagePicker}
-          >
-            {form.image ? (
-              <View style={styles.imagePreview}>
-                <ImageIcon size={20} color={Colors.primary} />
-                <Text style={styles.imageName} numberOfLines={1}>{form.image.fileName}</Text>
-                <TouchableOpacity onPress={() => setForm(prev => ({ ...prev, image: null }))}>
-                  <X size={16} color={Colors.error} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={styles.attachmentText}>Click to add photo</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Location Display */}
-        {/* {form.location && (
-          <View style={styles.locationContainer}>
-            <MapPin size={16} color={Colors.primary} />
-            <Text style={styles.locationText}>
-              Location tagged: {form.location.latitude.toFixed(4)}, {form.location.longitude.toFixed(4)}
-            </Text>
-          </View>
-        )} */}
-
-        <View style={styles.formSection}>
-          <View style={styles.labelWrapper}>
-            <Flag size={16} color={Colors.textSecondary} />
-            <Text style={styles.inputLabel}>Priority Level</Text>
-          </View>
-          <View style={[styles.priorityGrid, width > 600 && styles.priorityGridWide]}>
-            {priorities.map((p) => (
-              <TouchableOpacity
-                key={p.value}
-                style={[
-                  styles.priorityButton,
-                  form.priority === p.value && { backgroundColor: p.color, borderColor: p.color },
-                  width > 600 && { maxWidth: 200 }
-                ]}
-                onPress={() => setForm({ ...form, priority: p.value as any })}
-              >
-                <Text style={[styles.priorityButtonText, form.priority === p.value && styles.priorityButtonTextActive]}>
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={styles.zoneHintText}>Only showing vehicles in your assigned zone.</Text>
         </View>
 
         <TouchableOpacity
@@ -282,14 +237,12 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
             <ActivityIndicator color={Colors.surface} />
           ) : (
             <>
-              <CheckCircle size={20} color={Colors.surface} style={{ marginRight: 10 }} />
-              <Text style={styles.submitButtonText}>Create Ticket</Text>
+              <Text style={styles.submitButtonText}>Create</Text>
             </>
           )}
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Vehicle Picker Modal */}
       <Modal visible={showVehiclePicker} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -311,7 +264,6 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
                     setShowVehiclePicker(false);
                   }}
                 >
-                  <Truck size={18} color={Colors.textSecondary} style={{ marginRight: 12 }} />
                   <Text style={styles.vehicleItemText}>{item.name}</Text>
                   {form.vehicleId === item._id && <CheckCircle size={18} color={Colors.primary} />}
                 </TouchableOpacity>
@@ -320,6 +272,44 @@ export default function SsoCreateCcrScreen({ navigation }: any) {
             />
           </View>
         </View>
+      </Modal>
+
+      <Modal visible={showTypePicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowTypePicker(false)}>
+          <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
+            {types.map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={styles.vehicleItem}
+                onPress={() => {
+                  setForm({ ...form, type: t });
+                  setShowTypePicker(false);
+                }}
+              >
+                <Text style={styles.vehicleItemText}>{t}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showPriorityPicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPriorityPicker(false)}>
+          <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
+            {priorities.map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={styles.vehicleItem}
+                onPress={() => {
+                  setForm({ ...form, priority: p });
+                  setShowPriorityPicker(false);
+                }}
+              >
+                <Text style={styles.vehicleItemText}>{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -355,111 +345,50 @@ const styles = StyleSheet.create({
   formSection: {
     marginBottom: Spacing.xl,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 12,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  typeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  typeBadgeActive: {
-    backgroundColor: Colors.primary + '15',
-    borderColor: Colors.primary,
-  },
-  typeText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-  },
-  typeTextActive: {
-    color: Colors.primary,
+  webLabel: {
+    fontSize: 12,
     fontWeight: '800',
-  },
-  inputGroup: {
-    marginBottom: Spacing.xl,
-  },
-  labelWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    color: '#6b7280', // Slate-500
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  input: {
-    backgroundColor: Colors.surface,
+  webDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f9fafb', // Gray-50
     borderRadius: 12,
     paddingHorizontal: 16,
     height: 54,
-    fontSize: 16,
-    color: Colors.text,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  textArea: {
+  webDropdownText: {
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: '700',
+  },
+  webInput: {
+    backgroundColor: '#f9fafb', // Gray-50
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 54,
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  webTextArea: {
     height: 120,
     paddingTop: 16,
     textAlignVertical: 'top',
   },
-  pickerTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 54,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  zoneHintText: {
+    fontSize: 11,
+    color: '#9ca3af', // Gray-400
+    marginTop: 6,
+    marginLeft: 4,
   },
   pickerText: {
     fontSize: 15,
     color: Colors.textSecondary,
-  },
-  pickerTextSelected: {
-    color: Colors.text,
-    fontWeight: '600',
-  },
-  priorityGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  priorityGridWide: {
-    justifyContent: 'flex-start',
-  },
-  priorityButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  priorityButtonText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-  },
-  priorityButtonTextActive: {
-    color: Colors.surface,
   },
   submitButton: {
     backgroundColor: Colors.primary,
@@ -478,34 +407,6 @@ const styles = StyleSheet.create({
     color: Colors.surface,
     fontSize: 18,
     fontWeight: '800',
-  },
-  attachmentButton: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderStyle: 'dashed',
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  attachmentText: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  imagePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    width: '100%',
-  },
-  imageName: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 14,
-    color: Colors.text,
-    fontWeight: '600',
   },
   locationContainer: {
     flexDirection: 'row',

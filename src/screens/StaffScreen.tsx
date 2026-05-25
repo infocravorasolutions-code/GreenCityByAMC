@@ -14,17 +14,25 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
-  PermissionsAndroid
+  PermissionsAndroid,
+  Image
 } from 'react-native';
-import { Search, Plus, Trash2, Edit2, X, ChevronDown, Camera, FileText, CheckCircle2, Mic, MicOff } from 'lucide-react-native';
+import { Search, Plus, Trash2, Edit2, X, ChevronDown, Camera, FileText, CheckCircle2, Mic, MicOff, MapPin, Phone } from 'lucide-react-native';
 import * as Voice from '@ascendtis/react-native-voice-to-text';
 import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
 import { managerService } from '../services/managerService';
+import { useAuth } from '../context/AuthContext';
+import { useTranslation } from '../context/LanguageContext';
 
 export default function StaffScreen({ navigation }: any) {
+  const { t } = useTranslation();
   const [employees, setEmployees] = useState<any[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  
+  const { user, selectedZone, setSelectedZone } = useAuth();
+  const userZones = user?.zones || (user as any)?.supervisorZones || [];
+  const [showZonePicker, setShowZonePicker] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,12 +51,10 @@ export default function StaffScreen({ navigation }: any) {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    empCode: '',
     designation: '',
     category: 'semiSkilled',
-    shift: 'day',
+    shift: 'Shift I',
     phone: '',
-    email: '',
     department: '',
     password: '',
     address: '',
@@ -58,6 +64,7 @@ export default function StaffScreen({ navigation }: any) {
     accountNo: '',
     ifsc: '',
     isActive: true,
+    drivingLicenceNumber: '',
   });
 
   // File States
@@ -65,9 +72,13 @@ export default function StaffScreen({ navigation }: any) {
   const [aadhaarFront, setAadhaarFront] = useState<any>(null);
   const [aadhaarBack, setAadhaarBack] = useState<any>(null);
   const [panCard, setPanCard] = useState<any>(null);
+  const [drivingLicence, setDrivingLicence] = useState<any>(null);
 
   useEffect(() => {
     fetchEmployees();
+  }, [selectedZone]);
+
+  useEffect(() => {
 
     console.log('[Voice] Initializing stable module...', Voice);
     
@@ -193,9 +204,7 @@ export default function StaffScreen({ navigation }: any) {
     setSearch(text);
     if (text) {
       const filtered = dataToFilter.filter(emp =>
-        (emp.name && emp.name.toLowerCase().includes(text.toLowerCase())) ||
-        (emp.empCode && emp.empCode.toLowerCase().includes(text.toLowerCase())) ||
-        (emp.email && emp.email.toLowerCase().includes(text.toLowerCase()))
+        (emp.name && emp.name.toLowerCase().includes(text.toLowerCase()))
       );
       setFilteredEmployees(filtered);
     } else {
@@ -206,12 +215,10 @@ export default function StaffScreen({ navigation }: any) {
   const openAddModal = () => {
     setFormData({
       name: '',
-      empCode: '',
       designation: '',
       category: 'semiSkilled',
-      shift: 'day',
+      shift: 'Shift I',
       phone: '',
-      email: '',
       department: '',
       password: '',
       address: '',
@@ -221,11 +228,13 @@ export default function StaffScreen({ navigation }: any) {
       accountNo: '',
       ifsc: '',
       isActive: true,
+      drivingLicenceNumber: '',
     });
     setProfilePhoto(null);
     setAadhaarFront(null);
     setAadhaarBack(null);
     setPanCard(null);
+    setDrivingLicence(null);
     setIsEditing(false);
     setModalVisible(true);
   };
@@ -234,13 +243,11 @@ export default function StaffScreen({ navigation }: any) {
     setCurrentId(emp._id);
     setFormData({
       name: emp.name || '',
-      empCode: emp.empCode || '',
       designation: emp.designation || '',
       category: emp.category || 'semiSkilled',
-      // Normalize legacy values ('morning', 'evening', etc.) → 'day' since backend only checks === 'night'
-      shift: emp.shift === 'night' ? 'night' : 'day',
+      // Normalize legacy values
+      shift: emp.shift === 'Shift II' || emp.shift === 'night' ? 'Shift II' : 'Shift I',
       phone: emp.phone || '',
-      email: emp.email || '',
       department: emp.department || '',
       password: '', // Usually not pre-populated
       address: emp.address || '',
@@ -250,16 +257,18 @@ export default function StaffScreen({ navigation }: any) {
       accountNo: emp.accountNo || '',
       ifsc: emp.ifsc || '',
       isActive: emp.isActive !== undefined ? emp.isActive : true,
+      drivingLicenceNumber: emp.drivingLicenceNumber || '',
     });
     setProfilePhoto(null);
     setAadhaarFront(null);
     setAadhaarBack(null);
     setPanCard(null);
+    setDrivingLicence(null);
     setIsEditing(true);
     setModalVisible(true);
   };
 
-  const pickImage = async (type: 'profile' | 'aFront' | 'aBack' | 'pan') => {
+  const pickImage = async (type: 'profile' | 'aFront' | 'aBack' | 'pan' | 'dl') => {
     const { launchCamera, launchImageLibrary } = require('react-native-image-picker');
     
     Alert.alert(
@@ -288,6 +297,7 @@ export default function StaffScreen({ navigation }: any) {
         else if (type === 'aFront') setAadhaarFront(selected);
         else if (type === 'aBack') setAadhaarBack(selected);
         else if (type === 'pan') setPanCard(selected);
+        else if (type === 'dl') setDrivingLicence(selected);
       }
     } catch (e) {
       console.log('Image Pick Error:', e);
@@ -319,8 +329,8 @@ export default function StaffScreen({ navigation }: any) {
   };
 
   const saveEmployee = async () => {
-    if (!formData.name || !formData.empCode) {
-      Alert.alert('Required Fields', 'Please provide at least a Name and Code.');
+    if (!formData.name) {
+      Alert.alert('Required Fields', 'Please provide a Name.');
       return;
     }
 
@@ -363,6 +373,18 @@ export default function StaffScreen({ navigation }: any) {
         name: panCard.fileName || 'pancard.jpg',
       } as any);
     }
+    // NOTE: The backend Multer configuration for Employees does not seem to accept
+    // the 'drivingLicence' image field yet, causing an "Unexpected field" error.
+    // Uncomment this once the backend adds `{ name: 'drivingLicence', maxCount: 1 }`
+    /*
+    if (drivingLicence) {
+      apiData.append('drivingLicence', {
+        uri: drivingLicence.uri,
+        type: drivingLicence.type || 'image/jpeg',
+        name: drivingLicence.fileName || 'driving_licence.jpg',
+      } as any);
+    }
+    */
 
     try {
       if (isEditing) {
@@ -381,7 +403,7 @@ export default function StaffScreen({ navigation }: any) {
   };
 
   const renderBadge = (text: string, type: 'category' | 'shift') => {
-    if (!text) return <Text>-</Text>;
+    if (!text) return null;
 
     let bgColor = Colors.background;
     let textColor = Colors.textSecondary;
@@ -420,24 +442,46 @@ export default function StaffScreen({ navigation }: any) {
     );
   }
 
+  const getImageUrl = (url: string | null | undefined) => {
+    if (!url || typeof url !== 'string' || url.trim() === '' || url === 'null') return null;
+    if (url.startsWith('http')) return url;
+    if (url.startsWith('/static/')) return `https://api.greencityamc.com${url}`;
+    if (url.startsWith('/')) return `https://api.greencityamc.com/static${url}`;
+    return `https://api.greencityamc.com/static/${url}`;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Area */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
-          <Text style={styles.headerTitle}>My Employees</Text>
+          <View>
+            <Text style={styles.headerTitle}>{t('staff.myStaff')}</Text>
+            {user?.role === 'supervisor' && userZones.length > 1 ? (
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }} onPress={() => setShowZonePicker(true)}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{selectedZone || t('attendance.selectZone')}</Text>
+                <ChevronDown size={14} color={Colors.primary} style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
+            ) : user?.role === 'supervisor' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <MapPin size={12} color={Colors.primary} />
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginLeft: 4, fontWeight: '600' }}>{user?.zoneLabel || user?.zone || 'Ward'}</Text>
+              </View>
+            ) : null}
+          </View>
           <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
             <Plus size={16} color={Colors.surface} />
             <Text style={styles.addButtonText}>Add Employee</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.headerSubtitle}>Total <Text style={{ color: Colors.error }}>{employees.length}</Text> employees</Text>
+        <Text style={styles.headerSubtitle}>{t('reports.total')}: <Text style={{ color: Colors.error }}>{employees.length}</Text></Text>
 
         <View style={styles.searchWrapper}>
           <Search size={20} color={Colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by name, code or email..."
+            placeholder={t('staff.search')}
             value={search}
             onChangeText={(t) => handleSearch(t)}
           />
@@ -456,11 +500,17 @@ export default function StaffScreen({ navigation }: any) {
             {/* Employee Profile */}
             <View style={styles.cellEmployee}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{item.name ? item.name.charAt(0).toUpperCase() : 'U'}</Text>
+                {getImageUrl(item.profileImage || item.image) ? (
+                  <Image 
+                    source={{ uri: getImageUrl(item.profileImage || item.image)! }} 
+                    style={{ width: 40, height: 40, borderRadius: 20 }} 
+                  />
+                ) : (
+                  <Text style={styles.avatarText}>{item.name ? item.name.charAt(0).toUpperCase() : 'U'}</Text>
+                )}
               </View>
               <View>
                 <Text style={styles.empNameText}>{item.name}</Text>
-                <Text style={styles.empCodeText}>{item.empCode}</Text>
               </View>
             </View>
 
@@ -471,15 +521,24 @@ export default function StaffScreen({ navigation }: any) {
 
             {/* Badges and details in a scrollable block to mirror table behavior on small screens */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollableCells}>
-              <View style={styles.cellScroll}>
-                {renderBadge(item.category, 'category')}
-              </View>
-              <View style={styles.cellScroll}>
-                <Text style={styles.cellText}>{item.phone || '-'}</Text>
-              </View>
-              <View style={styles.cellScroll}>
-                {renderBadge(item.shift, 'shift')}
-              </View>
+              {item.category ? (
+                <View style={styles.cellScroll}>
+                  {renderBadge(item.category, 'category')}
+                </View>
+              ) : null}
+              
+              {item.phone ? (
+                <View style={[styles.cellScroll, { flexDirection: 'row', alignItems: 'center' }]}>
+                  <Phone size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+                  <Text style={styles.cellText}>{item.phone}</Text>
+                </View>
+              ) : null}
+              
+              {item.shift ? (
+                <View style={styles.cellScroll}>
+                  {renderBadge(item.shift, 'shift')}
+                </View>
+              ) : null}
             </ScrollView>
 
             {/* Actions */}
@@ -533,15 +592,9 @@ export default function StaffScreen({ navigation }: any) {
               </View>
             </View>
 
-            <View style={styles.rowInputs}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
-                <Text style={styles.label}>Employee Code <Text style={{ color: Colors.error }}>*</Text></Text>
-                <TextInput style={styles.input} value={formData.empCode} onChangeText={(t) => setFormData({ ...formData, empCode: t })} placeholder="EMP-001" autoCapitalize="none" />
-              </View>
-              <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
-                <Text style={styles.label}>Password <Text style={{ color: Colors.error }}>*</Text></Text>
-                <TextInput style={styles.input} value={formData.password} onChangeText={(t) => setFormData({ ...formData, password: t })} placeholder="Min 6 characters" secureTextEntry />
-              </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password <Text style={{ color: Colors.error }}>*</Text></Text>
+              <TextInput style={styles.input} value={formData.password} onChangeText={(t) => setFormData({ ...formData, password: t })} placeholder="Min 6 characters" secureTextEntry />
             </View>
 
             <View style={styles.rowInputs}>
@@ -550,8 +603,8 @@ export default function StaffScreen({ navigation }: any) {
                 <TextInput style={styles.input} value={formData.phone} onChangeText={(t) => setFormData({ ...formData, phone: t })} placeholder="1234567890" keyboardType="phone-pad" />
               </View>
               <View style={[styles.inputGroup, { flex: 1, marginLeft: Spacing.sm }]}>
-                <Text style={styles.label}>Email Address</Text>
-                <TextInput style={styles.input} value={formData.email} onChangeText={(t) => setFormData({ ...formData, email: t })} placeholder="user@mail.com" keyboardType="email-address" autoCapitalize="none" />
+                <Text style={styles.label}>Driving Licence No</Text>
+                <TextInput style={styles.input} value={formData.drivingLicenceNumber} onChangeText={(t) => setFormData({ ...formData, drivingLicenceNumber: t })} placeholder="GJ0120230000000" autoCapitalize="characters" />
               </View>
             </View>
 
@@ -652,9 +705,9 @@ export default function StaffScreen({ navigation }: any) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Shift</Text>
               <View style={styles.radioGroup}>
-                {['day', 'night'].map(s => (
+                {['Shift I', 'Shift II'].map(s => (
                   <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
-                    <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>{s === 'day' ? '☀️ Day (7AM–7PM)' : '🌙 Night (7PM–7AM)'}</Text>
+                    <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -710,6 +763,14 @@ export default function StaffScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
             </View>
+            <View style={styles.documentRow}>
+              <View style={styles.docItem}>
+                <Text style={styles.docLabel}>Driving Licence</Text>
+                <TouchableOpacity style={styles.docPicker} onPress={() => pickImage('dl')}>
+                  {drivingLicence ? <CheckCircle2 size={24} color={Colors.success} /> : <FileText size={24} color={Colors.textSecondary} />}
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={{ height: 40 }} />
           </ScrollView>
 
@@ -722,6 +783,34 @@ export default function StaffScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Zone Picker Modal */}
+      <Modal visible={showZonePicker} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowZonePicker(false)}>
+          <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Zone</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {userZones.map((zoneOption: string) => (
+                <TouchableOpacity
+                  key={zoneOption}
+                  style={styles.zoneItem}
+                  onPress={() => {
+                    setSelectedZone(zoneOption);
+                    setShowZonePicker(false);
+                  }}
+                >
+                  <Text style={[styles.zoneItemText, selectedZone === zoneOption && styles.zoneItemTextSelected]}>
+                    {zoneOption}
+                  </Text>
+                  {selectedZone === zoneOption && <CheckCircle2 size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
     </SafeAreaView>
@@ -1151,5 +1240,44 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  zoneItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  zoneItemText: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  zoneItemTextSelected: {
+    color: Colors.primary,
+    fontWeight: '800',
   },
 });

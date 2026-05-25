@@ -1,25 +1,46 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
+
+const getRolePath = async (): Promise<string> => {
+  try {
+    const userDataStr = await AsyncStorage.getItem('userData');
+    if (userDataStr) {
+      const userData = JSON.parse(userDataStr);
+      if (userData?.role === 'supervisor') {
+        return '/supervisor';
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return '/manager'; // Fallback to manager
+};
 
 export const managerService = {
   getSummary: async () => {
-    const response = await api.get('/manager/summary');
+    const rolePath = await getRolePath();
+    const response = await api.get(`${rolePath}/summary`);
     return response.data;
   },
 
   getStats: async (from?: string, to?: string) => {
-    const response = await api.get('/manager/attendance', {
-      params: { from, to },
+    const rolePath = await getRolePath();
+    const zone = await AsyncStorage.getItem('selectedZone');
+    const response = await api.get(`${rolePath}/attendance`, {
+      params: { from, to, ...(zone ? { zone } : {}) },
     });
     return response.data;
   },
 
   getEmployees: async () => {
-    const response = await api.get(`/manager/employees?t=${Date.now()}`);
+    const rolePath = await getRolePath();
+    const response = await api.get(`${rolePath}/employees?t=${Date.now()}`);
     return response.data;
   },
 
   createEmployee: async (formData: FormData) => {
-    const response = await api.post('/manager/employees', formData, {
+    const rolePath = await getRolePath();
+    const response = await api.post(`${rolePath}/employees`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -28,7 +49,8 @@ export const managerService = {
   },
 
   updateEmployee: async (id: string, formData: FormData) => {
-    const response = await api.put(`/manager/employees/${id}`, formData, {
+    const rolePath = await getRolePath();
+    const response = await api.put(`${rolePath}/employees/${id}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -37,12 +59,14 @@ export const managerService = {
   },
 
   deleteEmployee: async (id: string) => {
-    const response = await api.delete(`/manager/employees/${id}`);
+    const rolePath = await getRolePath();
+    const response = await api.delete(`${rolePath}/employees/${id}`);
     return response.data;
   },
 
   getTickets: async () => {
-    const response = await api.get('/manager/ccr');
+    const rolePath = await getRolePath();
+    const response = await api.get(`${rolePath}/ccr`);
     return response.data.items;
   },
 };
