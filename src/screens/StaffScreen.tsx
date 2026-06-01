@@ -53,7 +53,7 @@ export default function StaffScreen({ navigation }: any) {
     name: '',
     designation: '',
     category: 'semiSkilled',
-    shift: 'Shift I',
+    shift: 'shift I',
     phone: '',
     department: '',
     password: '',
@@ -217,7 +217,7 @@ export default function StaffScreen({ navigation }: any) {
       name: '',
       designation: '',
       category: 'semiSkilled',
-      shift: 'Shift I',
+      shift: 'shift I',
       phone: '',
       department: '',
       password: '',
@@ -246,7 +246,7 @@ export default function StaffScreen({ navigation }: any) {
       designation: emp.designation || '',
       category: emp.category || 'semiSkilled',
       // Normalize legacy values
-      shift: emp.shift === 'Shift II' || emp.shift === 'night' ? 'Shift II' : 'Shift I',
+      shift: emp.shift === 'shift II' || emp.shift === 'Shift II' || emp.shift === 'night' ? 'shift II' : 'shift I',
       phone: emp.phone || '',
       department: emp.department || '',
       password: '', // Usually not pre-populated
@@ -682,7 +682,10 @@ export default function StaffScreen({ navigation }: any) {
               </TouchableOpacity>
               {showDesignation && (
                 <View style={styles.dropdownMenu}>
-                  {['labour', 'supervisor', 'driver'].map(d => (
+                  {(user?.tenant?.enableGpsTracking 
+                    ? ['GL', 'TL', 'supervisor', 'driver', 'mali'] 
+                    : ['GL', 'supervisor', 'mali']
+                  ).map(d => (
                     <TouchableOpacity key={d} style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, designation: d }); setShowDesignation(false); }}>
                       <Text style={[styles.dropdownItemText, formData.designation === d && styles.dropdownItemTextActive]}>{d}</Text>
                     </TouchableOpacity>
@@ -705,9 +708,11 @@ export default function StaffScreen({ navigation }: any) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Shift</Text>
               <View style={styles.radioGroup}>
-                {['Shift I', 'Shift II'].map(s => (
+                {['shift I', 'shift II'].map(s => (
                   <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
-                    <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>{s}</Text>
+                    <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>

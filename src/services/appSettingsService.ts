@@ -33,7 +33,13 @@ function compareSemver(aRaw: string, bRaw: string): number {
 }
 
 export async function fetchAppSettings(): Promise<AppSettingsResponse> {
-  const res = await api.get<AppSettingsResponse>('/public/app-settings');
+  const res = await api.get<AppSettingsResponse>(`/public/app-settings?t=${Date.now()}`, {
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  });
   return res.data;
 }
 
@@ -64,7 +70,6 @@ export async function checkForUpdate(): Promise<UpdateDecision> {
   const latestVersion = platformSettings.latestVersion;
   const minSupportedVersion = platformSettings.minSupportedVersion;
 
-  const belowMin = compareSemver(currentVersion, minSupportedVersion) < 0;
   const belowLatest = compareSemver(currentVersion, latestVersion) < 0;
 
   const bundleId = DeviceInfo.getBundleId();
@@ -75,20 +80,9 @@ export async function checkForUpdate(): Promise<UpdateDecision> {
 
   const storeUrl = platformSettings.storeUrl?.trim() || fallbackStoreUrl;
 
-  if (belowMin || (platformSettings.forceUpdate && belowLatest)) {
-    return {
-      kind: 'force',
-      currentVersion,
-      latestVersion,
-      minSupportedVersion,
-      storeUrl,
-      notes: platformSettings.notes,
-    };
-  }
-
   if (belowLatest) {
     return {
-      kind: 'optional',
+      kind: 'force',
       currentVersion,
       latestVersion,
       minSupportedVersion,

@@ -66,18 +66,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    // Add interceptor to handle 401 errors globally
+    // Add interceptor to handle 401 and 403 errors globally
     const interceptor = api.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response && error.response.status === 401) {
-          const requestUrl = error.config?.url || '';
-          // Never trigger auto-logout for credentials checks on login endpoints
-          if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/employee-login')) {
-            console.log('[AuthInterceptor] 401 detected on login endpoint. Skipping auto-logout.');
-          } else {
-            console.warn('[AuthInterceptor] 401 Unauthorized detected. Clearing active session.');
-            await logout();
+        if (error.response) {
+          const status = error.response.status;
+          
+          if (status === 401) {
+            const requestUrl = error.config?.url || '';
+            // Never trigger auto-logout for credentials checks on login endpoints
+            if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/employee-login')) {
+              console.log('[AuthInterceptor] 401 detected on login endpoint. Skipping auto-logout.');
+            } else {
+              console.warn('[AuthInterceptor] 401 Unauthorized detected. Clearing active session.');
+              await logout();
+            }
+          } else if (status === 403) {
+            // Check if it's the specific GPS_DISABLED error which we handle gracefully in UI
+            if (error.response.data?.code === 'GPS_DISABLED') {
+              console.log('[AuthInterceptor] 403 GPS_DISABLED detected. Skipping auto-logout.');
+            } else {
+              console.warn('[AuthInterceptor] 403 Forbidden detected. Role or Tenant access may have been invalidated. Clearing active session.');
+              await logout();
+            }
           }
         }
         return Promise.reject(error);

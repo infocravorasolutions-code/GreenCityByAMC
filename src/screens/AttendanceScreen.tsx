@@ -195,13 +195,7 @@ export default function AttendanceScreen() {
            console.log(`Chosen latestRecord: stepIn=${latestRecord?.stepIn}, isWorking=${!!latestRecord?.stepIn}`);
         }
 
-        let hasCompletedShift = false;
-        if (latestRecord && latestRecord.stepOut && latestRecord.stepIn) {
-          const recordDateStr = getISTDateStr(new Date(latestRecord.stepIn));
-          if (recordDateStr === todayStr) {
-            hasCompletedShift = true;
-          }
-        }
+        let hasCompletedShift = false; // Allow unlimited step-in/step-out cycles for supervisors too
 
         return {
           ...emp,
@@ -403,7 +397,7 @@ export default function AttendanceScreen() {
       formData.append('latitude', String(rawCoords?.lat || 0));
       formData.append('longitude', String(rawCoords?.lng || 0));
       formData.append('address', locationText);
-      formData.append('shift', '');
+      formData.append('shift', selectedEmployee.shift || '');
       formData.append('status', 'present');
       formData.append('note', note || (isSteppingIn ? '' : 'Step out via manager'));
 
@@ -420,7 +414,7 @@ export default function AttendanceScreen() {
           latitude: rawCoords?.lat || 0,
           longitude: rawCoords?.lng || 0,
           address: locationText,
-          shift: '',
+          shift: selectedEmployee.shift || '',
           status: 'present',
           note: note || 'Step out via manager',
           stepOutImage: ''
@@ -509,10 +503,9 @@ export default function AttendanceScreen() {
             <TouchableOpacity
               style={styles.employeeItem}
               onPress={() => {
-                if (item.hasCompletedShift && !item.isWorking) return;
                 initStepAction(item);
               }}
-              activeOpacity={item.hasCompletedShift && !item.isWorking ? 1 : 0.7}
+              activeOpacity={0.7}
             >
               <Avatar item={item} />
               <View style={{ flex: 1 }}>
@@ -524,9 +517,9 @@ export default function AttendanceScreen() {
                   <Text style={styles.stepActionText}>STEP OUT</Text>
                 </View>
               ) : (
-                <View style={[styles.stepInAction, item.hasCompletedShift && { backgroundColor: Colors.border }]}>
-                  <Text style={[styles.stepActionText, item.hasCompletedShift && { color: Colors.textSecondary }]}>
-                    {item.hasCompletedShift ? 'COMPLETED' : t('attendance.stepInBtn')}
+                <View style={styles.stepInAction}>
+                  <Text style={styles.stepActionText}>
+                    {t('attendance.stepInBtn')}
                   </Text>
                 </View>
               )}

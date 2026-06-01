@@ -52,6 +52,7 @@ export default function SsoManagersScreen({ navigation }: any) {
   // Vehicles for Multi-Select
   const [availableVehicles, setAvailableVehicles] = useState<any[]>([]);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
+  const [gpsDisabled, setGpsDisabled] = useState(false);
 
   useEffect(() => {
     fetchManagers();
@@ -84,6 +85,7 @@ export default function SsoManagersScreen({ navigation }: any) {
       if (error?.response?.data?.code === 'GPS_DISABLED') {
         // Safe to ignore, GPS is disabled on the tenant.
         console.log('GPS disabled, skipping vehicle fetch.');
+        setGpsDisabled(true);
       } else {
         console.error('[SsoManagersScreen] Failed to fetch vehicles:', error);
       }
@@ -266,7 +268,11 @@ export default function SsoManagersScreen({ navigation }: any) {
       fetchManagers();
     } catch (err: any) {
       console.error('[SsoManagersScreen] Save error:', err);
-      Alert.alert('Error', err?.response?.data?.message || 'Failed to save manager.');
+      if (err?.response?.status === 409) {
+        Alert.alert('Validation Error', 'This mobile number is already in use.');
+      } else {
+        Alert.alert('Error', err?.response?.data?.message || 'Failed to save manager.');
+      }
     } finally {
       setSaving(false);
     }
@@ -405,38 +411,42 @@ export default function SsoManagersScreen({ navigation }: any) {
               </TouchableOpacity>
             )}
 
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Vehicles Assignment (Tasks)</Text>
-            </View>
+            {!gpsDisabled && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Vehicles Assignment (Tasks)</Text>
+                </View>
 
-            {availableVehicles.length > 0 ? (
-              <View style={styles.inputGroup}>
-                <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowVehiclePicker(!showVehiclePicker)}>
-                  <Text style={formData.assignedVehicleIds.length > 0 ? styles.dropdownBtnText : styles.dropdownPlaceholder}>
-                    {formData.assignedVehicleIds.length > 0 ? `${formData.assignedVehicleIds.length} Vehicle(s) Selected` : 'Select Vehicles...'}
-                  </Text>
-                  <ChevronDown size={18} color={Colors.textSecondary} />
-                </TouchableOpacity>
-                {showVehiclePicker && (
-                  <View style={styles.dropdownMenu}>
-                    {availableVehicles.map(vehicle => {
-                      const isSelected = formData.assignedVehicleIds.includes(vehicle._id);
-                      return (
-                        <TouchableOpacity key={vehicle._id} style={styles.dropdownItem} onPress={() => toggleVehicleAssignment(vehicle._id)}>
-                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
-                            {vehicle.name} ({vehicle.numberPlate})
-                          </Text>
-                          {isSelected && <Check size={18} color={Colors.primary} />}
-                        </TouchableOpacity>
-                      );
-                    })}
+                {availableVehicles.length > 0 ? (
+                  <View style={styles.inputGroup}>
+                    <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowVehiclePicker(!showVehiclePicker)}>
+                      <Text style={formData.assignedVehicleIds.length > 0 ? styles.dropdownBtnText : styles.dropdownPlaceholder}>
+                        {formData.assignedVehicleIds.length > 0 ? `${formData.assignedVehicleIds.length} Vehicle(s) Selected` : 'Select Vehicles...'}
+                      </Text>
+                      <ChevronDown size={18} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                    {showVehiclePicker && (
+                      <View style={styles.dropdownMenu}>
+                        {availableVehicles.map(vehicle => {
+                          const isSelected = formData.assignedVehicleIds.includes(vehicle._id);
+                          return (
+                            <TouchableOpacity key={vehicle._id} style={styles.dropdownItem} onPress={() => toggleVehicleAssignment(vehicle._id)}>
+                              <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextActive]}>
+                                {vehicle.name} ({vehicle.numberPlate})
+                              </Text>
+                              {isSelected && <Check size={18} color={Colors.primary} />}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
                   </View>
+                ) : (
+                  <Text style={{ color: Colors.textSecondary, marginBottom: Spacing.md, fontStyle: 'italic' }}>
+                    No vehicles available.
+                  </Text>
                 )}
-              </View>
-            ) : (
-              <Text style={{ color: Colors.textSecondary, marginBottom: Spacing.md, fontStyle: 'italic' }}>
-                No vehicles available or GPS is disabled for this organization.
-              </Text>
+              </>
             )}
 
             <View style={styles.sectionHeader}>

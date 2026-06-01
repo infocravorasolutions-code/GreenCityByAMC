@@ -71,9 +71,14 @@ export default function SsoLiveMapScreen({ navigation }: any) {
         const js = `updateSingleMarker("${evt.vehicleId}", ${evt.lat}, ${evt.lng}, ${evt.speed || 0}, "${knownVehicle.name || 'Vehicle'}", ${evt.isOnline})`;
         webViewRef.current?.injectJavaScript(js);
       } else if (!knownVehicle && evt.lat && evt.lng) {
-        console.log('[LiveMap] Plotting unknown vehicle:', evt.vehicleId);
-        const js = `updateSingleMarker("${evt.vehicleId}", ${evt.lat}, ${evt.lng}, ${evt.speed || 0}, "Unknown Vehicle", ${evt.isOnline})`;
-        webViewRef.current?.injectJavaScript(js);
+        // Client-side filtering: Only plot unknown vehicles if their zone matches assigned zones
+        if (evt.zone && (userZones.includes(evt.zone) || (selectedZone && evt.zone === selectedZone))) {
+          console.log('[LiveMap] Plotting unknown vehicle in assigned zone:', evt.vehicleId);
+          const js = `updateSingleMarker("${evt.vehicleId}", ${evt.lat}, ${evt.lng}, ${evt.speed || 0}, "Unknown Vehicle", ${evt.isOnline})`;
+          webViewRef.current?.injectJavaScript(js);
+        } else {
+          console.log('[LiveMap] Ignoring unknown vehicle outside assigned zones:', evt.vehicleId);
+        }
       }
     });
 
