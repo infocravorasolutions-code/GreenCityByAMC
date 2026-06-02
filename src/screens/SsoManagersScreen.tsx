@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  PermissionsAndroid,
   Linking
 } from 'react-native';
 import { Search, Plus, Trash2, Edit2, X, Camera, FileText, CheckCircle2, ShieldCheck, ChevronDown, Check, Phone } from 'lucide-react-native';
@@ -148,7 +149,24 @@ export default function SsoManagersScreen({ navigation }: any) {
       'Choose from gallery or take a new photo',
       [
         { text: 'Gallery', onPress: () => handleImagePick(launchImageLibrary) },
-        { text: 'Camera', onPress: () => handleImagePick(launchCamera) },
+        { 
+          text: 'Camera', 
+          onPress: async () => {
+            if (Platform.OS === 'android') {
+              try {
+                const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+                if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                  Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+                  return;
+                }
+              } catch (err) {
+                console.warn(err);
+                return;
+              }
+            }
+            handleImagePick(launchCamera);
+          } 
+        },
         { text: 'Cancel', style: 'cancel' }
       ]
     );

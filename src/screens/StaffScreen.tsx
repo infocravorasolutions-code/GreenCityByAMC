@@ -276,7 +276,24 @@ export default function StaffScreen({ navigation }: any) {
       'Choose from gallery or take a new photo',
       [
         { text: 'Gallery', onPress: () => handleImagePick(launchImageLibrary, type) },
-        { text: 'Camera', onPress: () => handleImagePick(launchCamera, type) },
+        { 
+          text: 'Camera', 
+          onPress: async () => {
+            if (Platform.OS === 'android') {
+              try {
+                const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+                if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                  Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+                  return;
+                }
+              } catch (err) {
+                console.warn(err);
+                return;
+              }
+            }
+            handleImagePick(launchCamera, type);
+          } 
+        },
         { text: 'Cancel', style: 'cancel' }
       ]
     );
