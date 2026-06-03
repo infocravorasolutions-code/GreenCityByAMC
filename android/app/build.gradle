@@ -97,8 +97,15 @@ android {
         // React Native 0.85 uses C++20 (concepts) in its native code.
         externalNativeBuild {
             cmake {
-                arguments "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_CXX_EXTENSIONS=ON"
+                arguments "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_CXX_EXTENSIONS=ON", "-DCMAKE_JOB_POOL_COMPILE:STRING=compile", "-DCMAKE_JOB_POOL_LINK:STRING=link", "-DCMAKE_JOB_POOLS:STRING=compile=2;link=2"
                 cppFlags "-std=gnu++20"
+            }
+        }
+
+        // Restrict compiled ABIs for release build during local testing
+        if (project.hasProperty('reactNativeArchitectures')) {
+            ndk {
+                abiFilters (*project.property('reactNativeArchitectures').split(','))
             }
         }
     }
@@ -115,6 +122,11 @@ android {
                 storePassword keystoreProperties["storePassword"]
                 keyAlias keystoreProperties["keyAlias"]
                 keyPassword keystoreProperties["keyPassword"]
+            } else {
+                storeFile file('debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
             }
         }
     }
