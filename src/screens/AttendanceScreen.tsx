@@ -354,7 +354,9 @@ export default function AttendanceScreen() {
       const result = await launchCamera({
         mediaType: 'photo',
         cameraType: 'front',
-        quality: 0.5,
+        quality: 0.3,
+        maxWidth: 800,
+        maxHeight: 800,
       });
 
       if (result.assets && result.assets.length > 0) {
