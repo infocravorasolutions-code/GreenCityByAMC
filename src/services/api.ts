@@ -26,4 +26,19 @@ api.interceptors.request.use(
   }
 );
 
+// Add a response interceptor to log API response errors in detail
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response) {
+      console.log(`[API Response Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} | Status: ${error.response.status} | Data:`, error.response.data);
+    } else {
+      console.log(`[API Network/Unknown Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} | Error:`, error.message);
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

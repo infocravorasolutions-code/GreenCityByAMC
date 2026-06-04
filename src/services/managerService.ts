@@ -64,6 +64,16 @@ export const managerService = {
     return response.data;
   },
 
+  getSupervisors: async () => {
+    const response = await api.get('/manager/supervisors');
+    return response.data;
+  },
+
+  getManagersForEmployee: async () => {
+    const response = await api.get('/supervisor/managers-for-employee');
+    return response.data;
+  },
+
   getTickets: async () => {
     const rolePath = await getRolePath();
     const response = await api.get(`${rolePath}/ccr`);

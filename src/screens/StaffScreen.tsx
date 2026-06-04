@@ -32,6 +32,19 @@ export default function StaffScreen({ navigation }: any) {
   
   const { user, selectedZone, setSelectedZone } = useAuth();
   const userZones = user?.zones || (user as any)?.supervisorZones || [];
+  
+  const supervisorZones = user?.zones?.length
+    ? user.zones
+    : user?.zone
+      ? [user.zone]
+      : [];
+
+  const showSupervisorField =
+    user?.tenant?.enableGpsTracking === true && user?.role === 'manager' && Boolean(user?.zone);
+
+  const showManagerField =
+    user?.tenant?.enableGpsTracking === true && user?.role === 'supervisor' && supervisorZones.length > 0;
+
   const [showZonePicker, setShowZonePicker] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -48,12 +61,18 @@ export default function StaffScreen({ navigation }: any) {
   const listeningFieldRef = React.useRef<string | null>(null);
   const [listeningField, setListeningField] = useState<string | null>(null);
 
+  // Picker states for GPS companies
+  const [supervisors, setSupervisors] = useState<any[]>([]);
+  const [managers, setManagers] = useState<any[]>([]);
+  const [showSupervisorPicker, setShowSupervisorPicker] = useState(false);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
+
   // Form State
   const [formData, setFormData] = useState({
     name: '',
     designation: '',
     category: 'semiSkilled',
-    shift: 'shift I',
+    shift: 'Shift I',
     phone: '',
     department: '',
     password: '',
@@ -65,6 +84,8 @@ export default function StaffScreen({ navigation }: any) {
     ifsc: '',
     isActive: true,
     drivingLicenceNumber: '',
+    supervisorId: '',
+    managerId: '',
   });
 
   // File States
@@ -74,8 +95,39 @@ export default function StaffScreen({ navigation }: any) {
   const [panCard, setPanCard] = useState<any>(null);
   const [drivingLicence, setDrivingLicence] = useState<any>(null);
 
+  const loadSupervisors = async () => {
+    try {
+      const data = await managerService.getSupervisors();
+      if (data && Array.isArray(data.supervisors)) {
+        setSupervisors(data.supervisors);
+      } else if (Array.isArray(data)) {
+        setSupervisors(data);
+      }
+    } catch (err) {
+      console.error('[StaffScreen] Failed to fetch supervisors:', err);
+    }
+  };
+
+  const loadManagers = async () => {
+    try {
+      const data = await managerService.getManagersForEmployee();
+      if (data && Array.isArray(data.managers)) {
+        setManagers(data.managers);
+      } else if (Array.isArray(data)) {
+        setManagers(data);
+      }
+    } catch (err) {
+      console.error('[StaffScreen] Failed to fetch managers:', err);
+    }
+  };
+
   useEffect(() => {
     fetchEmployees();
+    if (showSupervisorField) {
+      loadSupervisors();
+    } else if (showManagerField) {
+      loadManagers();
+    }
   }, [selectedZone]);
 
   useEffect(() => {
@@ -217,7 +269,7 @@ export default function StaffScreen({ navigation }: any) {
       name: '',
       designation: '',
       category: 'semiSkilled',
-      shift: 'shift I',
+      shift: 'Shift I',
       phone: '',
       department: '',
       password: '',
@@ -229,6 +281,8 @@ export default function StaffScreen({ navigation }: any) {
       ifsc: '',
       isActive: true,
       drivingLicenceNumber: '',
+      supervisorId: '',
+      managerId: '',
     });
     setProfilePhoto(null);
     setAadhaarFront(null);
@@ -236,6 +290,8 @@ export default function StaffScreen({ navigation }: any) {
     setPanCard(null);
     setDrivingLicence(null);
     setIsEditing(false);
+    setShowSupervisorPicker(false);
+    setShowManagerPicker(false);
     setModalVisible(true);
   };
 
@@ -246,7 +302,7 @@ export default function StaffScreen({ navigation }: any) {
       designation: emp.designation || '',
       category: emp.category || 'semiSkilled',
       // Normalize legacy values
-      shift: emp.shift === 'shift II' || emp.shift === 'Shift II' || emp.shift === 'night' ? 'shift II' : 'shift I',
+      shift: emp.shift === 'shift II' || emp.shift === 'Shift II' || emp.shift === 'night' ? 'Shift II' : 'Shift I',
       phone: emp.phone || '',
       department: emp.department || '',
       password: '', // Usually not pre-populated
@@ -258,6 +314,8 @@ export default function StaffScreen({ navigation }: any) {
       ifsc: emp.ifsc || '',
       isActive: emp.isActive !== undefined ? emp.isActive : true,
       drivingLicenceNumber: emp.drivingLicenceNumber || '',
+      supervisorId: emp.supervisorId?._id || emp.supervisorId || '',
+      managerId: emp.managerId?._id || emp.managerId || '',
     });
     setProfilePhoto(null);
     setAadhaarFront(null);
@@ -265,6 +323,8 @@ export default function StaffScreen({ navigation }: any) {
     setPanCard(null);
     setDrivingLicence(null);
     setIsEditing(true);
+    setShowSupervisorPicker(false);
+    setShowManagerPicker(false);
     setModalVisible(true);
   };
 
@@ -357,10 +417,24 @@ export default function StaffScreen({ navigation }: any) {
       const val = (formData as any)[key];
       if (key === 'isActive') {
         apiData.append(key, val ? 'true' : 'false');
+      } else if (key === 'supervisorId') {
+        if (showSupervisorField) {
+          apiData.append(key, val || '');
+        }
+      } else if (key === 'managerId') {
+        if (showManagerField) {
+          apiData.append(key, val || '');
+        }
       } else if (val !== '' && val !== null && val !== undefined) {
         apiData.append(key, String(val));
       }
     });
+
+    // Append supervisor/manager active zone if editing/creating
+    const activeZone = selectedZone || user?.zone;
+    if (activeZone) {
+      apiData.append('zone', activeZone);
+    }
 
     if (profilePhoto) {
       apiData.append('image', {   // API field name is 'image', not 'profileImage'
@@ -413,7 +487,21 @@ export default function StaffScreen({ navigation }: any) {
       fetchEmployees();
     } catch (err: any) {
       console.error('[StaffScreen] Save error:', err);
-      Alert.alert('Error', err?.response?.data?.message || 'Failed to save employee.');
+      
+      let errorMsg = 'Failed to save employee.';
+      if (err?.response?.data) {
+        const data = err.response.data;
+        if (data.message) {
+          errorMsg = data.message;
+        } else if (data.error) {
+          errorMsg = typeof data.error === 'string' ? data.error : (data.error.message || errorMsg);
+        } else if (Array.isArray(data.errors) && data.errors.length > 0) {
+          errorMsg = data.errors.map((e: any) => e.msg || e.message || JSON.stringify(e)).join('\n');
+        } else if (data.errors && typeof data.errors === 'object') {
+          errorMsg = Object.values(data.errors).map((e: any) => typeof e === 'string' ? e : (e.message || JSON.stringify(e))).join('\n');
+        }
+      }
+      Alert.alert('Error', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -711,6 +799,76 @@ export default function StaffScreen({ navigation }: any) {
               )}
             </View>
 
+            {showSupervisorField && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Supervisor</Text>
+                <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowSupervisorPicker(!showSupervisorPicker)}>
+                  <Text style={formData.supervisorId ? styles.dropdownBtnText : styles.dropdownPlaceholder}>
+                    {(() => {
+                      const selected = supervisors.find(s => s._id === formData.supervisorId);
+                      if (!selected) return '(none)';
+                      const name = selected.fullName || selected.name || '';
+                      const zoneStr = selected.zone ? ` - ${selected.zone.charAt(0).toUpperCase() + selected.zone.slice(1)}` : '';
+                      return `${name}${zoneStr}`;
+                    })()}
+                  </Text>
+                  <ChevronDown size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 4 }}>
+                  Supervisors in your ward ({user?.zoneLabel || user?.zone || ''}). Select one so they can step-in/out for this employee.
+                </Text>
+                {showSupervisorPicker && (
+                  <View style={styles.dropdownMenu}>
+                    <TouchableOpacity style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, supervisorId: '' }); setShowSupervisorPicker(false); }}>
+                      <Text style={[styles.dropdownItemText, !formData.supervisorId && styles.dropdownItemTextActive]}>(none)</Text>
+                    </TouchableOpacity>
+                    {supervisors.map(s => (
+                      <TouchableOpacity key={s._id} style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, supervisorId: s._id }); setShowSupervisorPicker(false); }}>
+                        <Text style={[styles.dropdownItemText, formData.supervisorId === s._id && styles.dropdownItemTextActive]}>
+                          {s.fullName || s.name}{s.zone ? ` - ${s.zone.charAt(0).toUpperCase() + s.zone.slice(1)}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {showManagerField && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Manager</Text>
+                <TouchableOpacity style={styles.dropdownBtn} onPress={() => setShowManagerPicker(!showManagerPicker)}>
+                  <Text style={formData.managerId ? styles.dropdownBtnText : styles.dropdownPlaceholder}>
+                    {(() => {
+                      const selected = managers.find(m => m._id === formData.managerId);
+                      if (!selected) return '(auto from your profile)';
+                      const name = selected.fullName || selected.name || '';
+                      const zoneStr = selected.zone ? ` - ${selected.zone.charAt(0).toUpperCase() + selected.zone.slice(1)}` : '';
+                      return `${name}${zoneStr}`;
+                    })()}
+                  </Text>
+                  <ChevronDown size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 4 }}>
+                  Managers in your ward: {supervisorZones.join(', ')}. Pick one so they can step-in/out.
+                </Text>
+                {showManagerPicker && (
+                  <View style={styles.dropdownMenu}>
+                    <TouchableOpacity style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, managerId: '' }); setShowManagerPicker(false); }}>
+                      <Text style={[styles.dropdownItemText, !formData.managerId && styles.dropdownItemTextActive]}>(auto from your profile)</Text>
+                    </TouchableOpacity>
+                    {managers.map(m => (
+                      <TouchableOpacity key={m._id} style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, managerId: m._id }); setShowManagerPicker(false); }}>
+                        <Text style={[styles.dropdownItemText, formData.managerId === m._id && styles.dropdownItemTextActive]}>
+                          {m.fullName || m.name}{m.zone ? ` - ${m.zone.charAt(0).toUpperCase() + m.zone.slice(1)}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             <View style={styles.rowInputs}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: Spacing.sm }]}>
                 <Text style={styles.label}>Department</Text>
@@ -725,10 +883,10 @@ export default function StaffScreen({ navigation }: any) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Shift</Text>
               <View style={styles.radioGroup}>
-                {['shift I', 'shift II'].map(s => (
+                {['Shift I', 'Shift II'].map(s => (
                   <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
                     <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                      {s}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -811,8 +969,8 @@ export default function StaffScreen({ navigation }: any) {
       <Modal visible={showZonePicker} animationType="fade" transparent>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowZonePicker(false)}>
           <View style={[styles.modalContent, { height: 'auto', paddingBottom: 20 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Zone</Text>
+            <View style={styles.zoneModalHeader}>
+              <Text style={styles.zoneModalTitle}>Select Zone</Text>
             </View>
             <ScrollView style={{ maxHeight: 300 }}>
               {userZones.map((zoneOption: string) => (
@@ -1274,12 +1432,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingBottom: 40,
   },
-  modalHeader: {
+  zoneModalHeader: {
     padding: 24,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  modalTitle: {
+  zoneModalTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: Colors.text,

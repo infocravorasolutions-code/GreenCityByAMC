@@ -43,6 +43,10 @@ export default function AttendanceReportScreen() {
 
   // Table Data
   const [records, setRecords] = useState<any[]>([]);
+  const [allRecords, setAllRecords] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const [fetchingMore, setFetchingMore] = useState(false);
 
   useEffect(() => {
     fetchReports();
@@ -62,7 +66,9 @@ export default function AttendanceReportScreen() {
       else if (data && data.data && Array.isArray(data.data)) recordsList = data.data;
       else if (data && data.records && Array.isArray(data.records)) recordsList = data.records;
 
-      setRecords(recordsList);
+      setAllRecords(recordsList);
+      setPage(1);
+      setRecords(recordsList.slice(0, pageSize));
 
       // Dynamically calculate metrics from the array
       let presentCount = 0;
@@ -89,6 +95,19 @@ export default function AttendanceReportScreen() {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const loadMore = () => {
+    if (fetchingMore || records.length >= allRecords.length) return;
+
+    setFetchingMore(true);
+    setTimeout(() => {
+      const nextPage = page + 1;
+      const nextRecords = allRecords.slice(0, nextPage * pageSize);
+      setPage(nextPage);
+      setRecords(nextRecords);
+      setFetchingMore(false);
+    }, 300);
   };
 
   const onRefresh = () => {
@@ -164,6 +183,15 @@ export default function AttendanceReportScreen() {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews={true}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={() => (
+          fetchingMore ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+            </View>
+          ) : null
+        )}
         ListHeaderComponent={() => (
           <View style={styles.cardsWrapper}>
 
