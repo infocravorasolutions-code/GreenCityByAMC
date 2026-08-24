@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   XCircle
 } from 'lucide-react-native';
-import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
+import { Colors, Spacing, BorderRadius } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { attendanceService } from '../services/attendanceService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -60,7 +60,7 @@ const formatTime = (timeStr: string) => {
     const minutesStr = minutes < 10 ? '0' + minutes : minutes;
     
     return `${hours}:${minutesStr} ${ampm}`;
-  } catch (e) {
+  } catch {
     return timeStr;
   }
 };
@@ -95,6 +95,7 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
       fetchTodayStatus();
     });
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
 
   const fetchLocalTodayAttendance = async () => {
@@ -168,6 +169,13 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
     fetchTodayStatus();
   };
 
+  const handleLogoutShortPress = () => {
+    Alert.alert(
+      'લૉગઆઉટ કરવા માટે (To Sign Out)',
+      'લૉગઆઉટ કરવા માટે લાલ બટનને ૨ સેકન્ડ સુધી દબાવી રાખો.\n(Please press and hold the red button for 2 seconds to sign out.)'
+    );
+  };
+
   const handleLogout = async () => {
     Alert.alert('લૉગઆઉટ', 'શું તમે ખરેખર બહાર નીકળવા માંગો છો?', [
       { text: 'રદ કરો', style: 'cancel' },
@@ -194,11 +202,14 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
     );
   }
 
+  const stepOutVal = attendance?.stepOut;
+  const stepOutTimeVal = attendance?.stepOutTime;
+  const hasValidStepOut = (stepOutVal && stepOutVal !== 'null') || (stepOutTimeVal && stepOutTimeVal !== 'null');
   const isSteppedIn = attendance && 
     (!!attendance.stepIn || !!attendance.stepInTime) && 
     attendance.stepIn !== 'null' && 
     attendance.stepInTime !== 'null' && 
-    (!attendance.stepOut && !attendance.stepOutTime || attendance.stepOut === 'null' || attendance.stepOutTime === 'null');
+    !hasValidStepOut;
   const hasStartedShift = attendance && 
     (!!attendance.stepIn || !!attendance.stepInTime) && 
     attendance.stepIn !== 'null' && 
@@ -217,7 +228,12 @@ export default function EmployeeDashboardScreen({ navigation }: any) {
             <Text style={styles.greeting}>નમસ્તે,</Text>
             <Text style={styles.userName}>{user?.name || user?.fullName || 'કર્મચારી'}</Text>
           </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <TouchableOpacity 
+            style={styles.logoutBtn} 
+            onPress={handleLogoutShortPress}
+            onLongPress={handleLogout}
+            delayLongPress={1500}
+          >
             <LogOut size={22} color={Colors.error} />
           </TouchableOpacity>
         </View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,6 +12,7 @@ import {
   Alert,
   Image
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lock, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
@@ -21,78 +22,78 @@ const { height } = Dimensions.get('window');
 
 
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen({ navigation: _navigation }: any) {
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
-  const handleLogin = async () => {
-    if (!mobile.trim()) {
-      Alert.alert('Error', 'Please enter your mobile number');
-      return;
-    }
-    if (!password) {
-      Alert.alert('Error', 'Please enter your password');
-      return;
-    }
+  const [quickLoginUser, setQuickLoginUser] = useState<{
+    mobile: string;
+    name: string;
+    role: string;
+    photo?: string;
+  } | null>(null);
+  const [useManualLogin, setUseManualLogin] = useState(false);
 
+  useEffect(() => {
+    const loadSavedCredentials = async () => {
+      try {
+        const savedMobile = await AsyncStorage.getItem('savedMobile');
+        const savedPassword = await AsyncStorage.getItem('savedPassword');
+        const savedName = await AsyncStorage.getItem('savedName');
+        const savedRole = await AsyncStorage.getItem('savedRole');
+        const savedPhoto = await AsyncStorage.getItem('savedUserPhoto');
+        if (savedMobile && savedPassword) {
+          setQuickLoginUser({
+            mobile: savedMobile,
+            name: savedName || 'User',
+            role: savedRole || 'employee',
+            photo: savedPhoto || undefined,
+          });
+          // prefill form inputs just in case they switch to manual inputs
+          setMobile(savedMobile);
+          setPassword(savedPassword);
+        }
+      } catch (e) {
+        console.error('Error loading saved credentials:', e);
+      }
+    };
+    loadSavedCredentials();
+  }, []);
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'employee': return 'ડ્રાઈવર / કર્મચારી (Driver / Employee)';
+      case 'supervisor': return 'સુપરવાઇઝર (Supervisor)';
+      case 'sso': return 'SSO અધિકારી (SSO Officer)';
+      case 'manager': return 'મેનેજર (Manager)';
+      case 'admin': return 'એડમિન (Admin)';
+      default: return role.toUpperCase();
+    }
+  };
+
+  const performAuth = async (targetMobile: string, targetPassword: string) => {
     setLoading(true);
     try {
-      const roles: ('employee' | 'supervisor' | 'sso' | 'manager' | 'admin')[] = [
-        'employee',
-        'supervisor',
-        'sso',
-        'manager',
-        'admin',
-      ];
-
-      // Fire authentication checks in parallel for all roles
-      const promises = roles.map(async (role) => {
-        try {
-          let res;
-          if (role === 'employee') {
-            res = await authService.employeeLogin({ mobile: mobile.trim(), password });
-          } else {
-            res = await authService.login({ mobile: mobile.trim(), password, role });
-          }
-          if (res && res.token) {
-            return { role, res };
-          }
-          throw new Error('No token');
-        } catch (e) {
-          throw e;
-        }
+      // Make a single call to backend's login endpoint.
+      // The Jignesh backend will auto-detect the user's role.
+      const res = await authService.login({
+        mobile: targetMobile.trim(),
+        password: targetPassword,
       });
 
-      // Safe engine promise resolution helper (custom Promise.any)
-      const firstSuccessful = async (proms: Promise<{ role: string; res: any }>[]) => {
-        return new Promise<{ role: string; res: any }>((resolve, reject) => {
-          let rejectedCount = 0;
-          let lastError: any = null;
-          proms.forEach((p) => {
-            p.then((val) => {
-              resolve(val);
-            }).catch((err) => {
-              rejectedCount++;
-              lastError = err;
-              if (rejectedCount === proms.length) {
-                reject(lastError || new Error('Invalid credentials'));
-              }
-            });
-          });
-        });
-      };
+      console.log('[Auto-Detected Login Success]', JSON.stringify(res, null, 2));
 
-      const successfulAuth = await firstSuccessful(promises);
-
-      console.log(`[Auto-Detected Login Success] Role: ${successfulAuth.role}`, JSON.stringify(successfulAuth.res, null, 2));
-
-      // Admin login is now permitted on the mobile app for GPS tracking purposes
-
-      if (successfulAuth.res && successfulAuth.res.token) {
-        await login(successfulAuth.res.token, successfulAuth.res.user);
+      if (res && res.token) {
+        const userObj = res.user;
+        await AsyncStorage.setItem('savedMobile', targetMobile.trim());
+        await AsyncStorage.setItem('savedPassword', targetPassword);
+        await AsyncStorage.setItem('savedName', userObj.name || userObj.fullName || 'User');
+        await AsyncStorage.setItem('savedRole', userObj.role || 'employee');
+        await AsyncStorage.setItem('savedUserPhoto', userObj.image || userObj.profileImage || '');
+        await login(res.token, userObj);
       } else {
         throw new Error('Invalid response from server');
       }
@@ -114,6 +115,32 @@ export default function LoginScreen({ navigation }: any) {
     }
   };
 
+  const handleLogin = async () => {
+    if (!mobile.trim()) {
+      Alert.alert('Error', 'Please enter your mobile number');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Error', 'Please enter your password');
+      return;
+    }
+    await performAuth(mobile, password);
+  };
+
+  const handleQuickLogin = async () => {
+    try {
+      const savedMobile = await AsyncStorage.getItem('savedMobile');
+      const savedPassword = await AsyncStorage.getItem('savedPassword');
+      if (savedMobile && savedPassword) {
+        await performAuth(savedMobile, savedPassword);
+      } else {
+        Alert.alert('Error', 'No saved credentials found.');
+      }
+    } catch (e) {
+      console.error('Quick login failed', e);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -131,61 +158,113 @@ export default function LoginScreen({ navigation }: any) {
           <Text style={styles.subtitleText}>Sign in to your account</Text>
         </View>
 
-        <View style={styles.formContainer}>
-          <Text style={styles.roleHint}>Enter your registered mobile number and password to sign in</Text>
-
-          {/* Mobile Number Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Mobile Number</Text>
-            <View style={styles.inputWrapper}>
-              <Phone size={20} color={Colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="9876543210"
-                placeholderTextColor={Colors.textSecondary}
-                value={mobile}
-                onChangeText={setMobile}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                maxLength={15}
-              />
+        {quickLoginUser && !useManualLogin ? (
+          <View style={styles.formContainer}>
+            <Text style={styles.welcomeBackText}>ફરી સ્વાગત છે (Welcome Back)</Text>
+            
+            <View style={styles.profileSection}>
+              {quickLoginUser.photo ? (
+                <Image source={{ uri: quickLoginUser.photo }} style={styles.quickLoginAvatar} />
+              ) : (
+                <View style={styles.quickLoginInitial}>
+                  <Text style={styles.quickLoginInitialText}>
+                    {quickLoginUser.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.quickLoginName}>{quickLoginUser.name}</Text>
+              <Text style={styles.quickLoginRole}>
+                {getRoleLabel(quickLoginUser.role)}
+              </Text>
+              <Text style={styles.quickLoginPhone}>{quickLoginUser.mobile}</Text>
             </View>
-          </View>
 
-          {/* Password Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.inputWrapper}>
-              <Lock size={20} color={Colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="••••••••"
-                placeholderTextColor={Colors.textSecondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 8 }}>
-                {showPassword ? (
-                  <EyeOff size={20} color={Colors.textSecondary} />
-                ) : (
-                  <Eye size={20} color={Colors.textSecondary} />
-                )}
+            <TouchableOpacity
+              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              onPress={handleQuickLogin}
+              disabled={loading}
+            >
+              <Text style={styles.loginButtonText}>
+                {loading ? 'સાઇન ઇન થઈ રહ્યું છે...' : 'અહીં ક્લિક કરી લોગીન કરો'}
+              </Text>
+              {!loading && <ChevronRight size={20} color={Colors.surface} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.switchAccountBtn}
+              onPress={() => setUseManualLogin(true)}
+              disabled={loading}
+            >
+              <Text style={styles.switchAccountBtnText}>બીજા ખાતાથી લોગિન કરો (Use another account)</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.formContainer}>
+            <Text style={styles.roleHint}>Enter your registered mobile number and password to sign in</Text>
+
+            {/* Mobile Number Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Mobile Number</Text>
+              <View style={styles.inputWrapper}>
+                <Phone size={20} color={Colors.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="9876543210"
+                  placeholderTextColor={Colors.textSecondary}
+                  value={mobile}
+                  onChangeText={setMobile}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  maxLength={15}
+                />
+              </View>
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Lock size={20} color={Colors.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor={Colors.textSecondary}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 8 }}>
+                  {showPassword ? (
+                    <EyeOff size={20} color={Colors.textSecondary} />
+                  ) : (
+                    <Eye size={20} color={Colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.loginButtonText}>
+                {loading ? 'Authenticating...' : 'Sign In'}
+              </Text>
+              {!loading && <ChevronRight size={20} color={Colors.surface} />}
+            </TouchableOpacity>
+
+            {quickLoginUser && (
+              <TouchableOpacity 
+                style={styles.switchAccountBtn}
+                onPress={() => setUseManualLogin(false)}
+                disabled={loading}
+              >
+                <Text style={styles.switchAccountBtnText}>પાછા જાઓ (Go Back)</Text>
               </TouchableOpacity>
-            </View>
+            )}
           </View>
-
-          <TouchableOpacity
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.loginButtonText}>
-              {loading ? 'Authenticating...' : 'Sign In'}
-            </Text>
-            {!loading && <ChevronRight size={20} color={Colors.surface} />}
-          </TouchableOpacity>
-        </View>
+        )}
 
         <View style={styles.footer}>
           <Text style={styles.footerLabelText}>POWERED BY</Text>
@@ -306,5 +385,63 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.5,
     top: 25,
+  },
+  welcomeBackText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  profileSection: {
+    alignItems: 'center',
+    marginVertical: Spacing.lg,
+  },
+  quickLoginAvatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    marginBottom: Spacing.md,
+  },
+  quickLoginInitial: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  quickLoginInitialText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  quickLoginName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  quickLoginRole: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  quickLoginPhone: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  switchAccountBtn: {
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  switchAccountBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

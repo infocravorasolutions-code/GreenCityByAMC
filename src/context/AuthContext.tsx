@@ -83,9 +83,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await logout();
             }
           } else if (status === 403) {
+            const requestUrl = error.config?.url || '';
             // Check if it's the specific GPS_DISABLED error which we handle gracefully in UI
             if (error.response.data?.code === 'GPS_DISABLED') {
               console.log('[AuthInterceptor] 403 GPS_DISABLED detected. Skipping auto-logout.');
+            } else if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/employee-login')) {
+              console.log('[AuthInterceptor] 403 detected on login endpoint. Skipping auto-logout.');
             } else {
               console.warn('[AuthInterceptor] 403 Forbidden detected. Role or Tenant access may have been invalidated. Clearing active session.');
               await logout();

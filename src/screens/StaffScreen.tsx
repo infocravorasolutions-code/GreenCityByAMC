@@ -29,10 +29,10 @@ export default function StaffScreen({ navigation }: any) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<any[]>([]);
   const [search, setSearch] = useState('');
-  
+
   const { user, selectedZone, setSelectedZone } = useAuth();
   const userZones = user?.zones || (user as any)?.supervisorZones || [];
-  
+
   const supervisorZones = user?.zones?.length
     ? user.zones
     : user?.zone
@@ -72,7 +72,7 @@ export default function StaffScreen({ navigation }: any) {
     name: '',
     designation: '',
     category: 'semiSkilled',
-    shift: 'Shift I',
+    shift: 'shift I',
     phone: '',
     department: '',
     password: '',
@@ -133,7 +133,7 @@ export default function StaffScreen({ navigation }: any) {
   useEffect(() => {
 
     console.log('[Voice] Initializing stable module...', Voice);
-    
+
     // Voice results (Final)
     const speechResultsSub = Voice.addEventListener('onSpeechResults', (e: any) => {
       console.log('[Voice Results]', e.value);
@@ -170,7 +170,7 @@ export default function StaffScreen({ navigation }: any) {
 
   const startListening = async (field: string) => {
     console.log(`[Voice] Requesting permission and starting listening for: ${field}`);
-    
+
     if (Platform.OS === 'android') {
       try {
         const granted = await PermissionsAndroid.request(
@@ -205,7 +205,7 @@ export default function StaffScreen({ navigation }: any) {
       listeningFieldRef.current = field;
       setListeningField(field);
       setIsListening(true);
-      await Voice.startListening(); 
+      await Voice.startListening();
       console.log('[Voice] Listening started successfully for:', field);
     } catch (e) {
       console.error('[Voice Start Error]', e);
@@ -269,7 +269,7 @@ export default function StaffScreen({ navigation }: any) {
       name: '',
       designation: '',
       category: 'semiSkilled',
-      shift: 'Shift I',
+      shift: 'shift I',
       phone: '',
       department: '',
       password: '',
@@ -302,7 +302,7 @@ export default function StaffScreen({ navigation }: any) {
       designation: emp.designation || '',
       category: emp.category || 'semiSkilled',
       // Normalize legacy values
-      shift: emp.shift === 'shift II' || emp.shift === 'Shift II' || emp.shift === 'night' ? 'Shift II' : 'Shift I',
+      shift: emp.shift === 'shift II' || emp.shift === 'Shift II' || emp.shift === 'night' ? 'shift II' : 'shift I',
       phone: emp.phone || '',
       department: emp.department || '',
       password: '', // Usually not pre-populated
@@ -330,14 +330,14 @@ export default function StaffScreen({ navigation }: any) {
 
   const pickImage = async (type: 'profile' | 'aFront' | 'aBack' | 'pan' | 'dl') => {
     const { launchCamera, launchImageLibrary } = require('react-native-image-picker');
-    
+
     Alert.alert(
       'Select Image',
       'Choose from gallery or take a new photo',
       [
         { text: 'Gallery', onPress: () => handleImagePick(launchImageLibrary, type) },
-        { 
-          text: 'Camera', 
+        {
+          text: 'Camera',
           onPress: async () => {
             if (Platform.OS === 'android') {
               try {
@@ -352,7 +352,7 @@ export default function StaffScreen({ navigation }: any) {
               }
             }
             handleImagePick(launchCamera, type);
-          } 
+          }
         },
         { text: 'Cancel', style: 'cancel' }
       ]
@@ -487,7 +487,7 @@ export default function StaffScreen({ navigation }: any) {
       fetchEmployees();
     } catch (err: any) {
       console.error('[StaffScreen] Save error:', err);
-      
+
       let errorMsg = 'Failed to save employee.';
       if (err?.response?.data) {
         const data = err.response.data;
@@ -606,9 +606,9 @@ export default function StaffScreen({ navigation }: any) {
             <View style={styles.cellEmployee}>
               <View style={styles.avatar}>
                 {getImageUrl(item.profileImage || item.image) ? (
-                  <Image 
-                    source={{ uri: getImageUrl(item.profileImage || item.image)! }} 
-                    style={{ width: 40, height: 40, borderRadius: 20 }} 
+                  <Image
+                    source={{ uri: getImageUrl(item.profileImage || item.image)! }}
+                    style={{ width: 40, height: 40, borderRadius: 20 }}
                   />
                 ) : (
                   <Text style={styles.avatarText}>{item.name ? item.name.charAt(0).toUpperCase() : 'U'}</Text>
@@ -631,14 +631,14 @@ export default function StaffScreen({ navigation }: any) {
                   {renderBadge(item.category, 'category')}
                 </View>
               ) : null}
-              
+
               {item.phone ? (
                 <View style={[styles.cellScroll, { flexDirection: 'row', alignItems: 'center' }]}>
                   <Phone size={14} color={Colors.textSecondary} style={{ marginRight: 4 }} />
                   <Text style={styles.cellText}>{item.phone}</Text>
                 </View>
               ) : null}
-              
+
               {item.shift ? (
                 <View style={styles.cellScroll}>
                   {renderBadge(item.shift, 'shift')}
@@ -787,8 +787,8 @@ export default function StaffScreen({ navigation }: any) {
               </TouchableOpacity>
               {showDesignation && (
                 <View style={styles.dropdownMenu}>
-                  {(user?.tenant?.enableGpsTracking 
-                    ? ['GL', 'TL', 'supervisor', 'driver', 'mali'] 
+                  {(user?.tenant?.enableGpsTracking
+                    ? ['GL', 'TL', 'supervisor', 'driver', 'mali']
                     : ['GL', 'supervisor', 'mali']
                   ).map(d => (
                     <TouchableOpacity key={d} style={styles.dropdownItem} onPress={() => { setFormData({ ...formData, designation: d }); setShowDesignation(false); }}>
@@ -883,10 +883,10 @@ export default function StaffScreen({ navigation }: any) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Shift</Text>
               <View style={styles.radioGroup}>
-                {['Shift I', 'Shift II'].map(s => (
+                {['shift I', 'shift II'].map(s => (
                   <TouchableOpacity key={s} onPress={() => setFormData({ ...formData, shift: s })} style={[styles.radioBtn, formData.shift === s && styles.radioBtnActive]}>
                     <Text style={[styles.radioText, formData.shift === s && styles.radioTextActive]}>
-                      {s}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
                     </Text>
                   </TouchableOpacity>
                 ))}

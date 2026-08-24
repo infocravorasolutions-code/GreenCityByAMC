@@ -22,7 +22,7 @@ import {
   CheckCircle2,
   ChevronLeft
 } from 'lucide-react-native';
-import { Colors, Spacing, BorderRadius, Shadows, Typography } from '../theme/Theme';
+import { Colors, Spacing, BorderRadius } from '../theme/Theme';
 import { useAuth } from '../context/AuthContext';
 import { attendanceService } from '../services/attendanceService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,6 +47,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchTodayStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchTodayStatus = async () => {
@@ -129,12 +130,12 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
 
         if (!fineGranted && !coarseGranted) {
           setFetchingLocation(false);
-          setLocationText('');
+          setLocationText(user?.zoneLabel || user?.zone || 'AMC Area');
           return;
         }
-      } catch (err) {
+      } catch {
         setFetchingLocation(false);
-        setLocationText('');
+        setLocationText(user?.zoneLabel || user?.zone || 'AMC Area');
         return;
       }
     }
@@ -142,9 +143,12 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
     const fallbackTimeout = setTimeout(() => {
       setFetchingLocation(false);
-      if (locationText === 'સ્થાન આપમેળે શોધી રહ્યું છે...') {
-         setLocationText('');
-      }
+      setLocationText(prev => {
+        if (prev === 'સ્થાન આપમેળે શોધી રહ્યું છે...' || !prev) {
+          return user?.zoneLabel || user?.zone || 'AMC Area';
+        }
+        return prev;
+      });
     }, 8000);
 
     Geolocation.getCurrentPosition(
@@ -160,16 +164,16 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
             }
           });
           const json = await res.json();
-          setLocationText(json.display_name || '');
-        } catch (e) {
-          setLocationText('');
+          setLocationText(json.display_name || user?.zoneLabel || user?.zone || 'AMC Area');
+        } catch {
+          setLocationText(user?.zoneLabel || user?.zone || 'AMC Area');
         }
         setFetchingLocation(false);
       },
       (error) => {
         clearTimeout(fallbackTimeout);
         console.warn(`[GPS ERROR] ${error.message}`);
-        setLocationText('');
+        setLocationText(user?.zoneLabel || user?.zone || 'AMC Area');
         setFetchingLocation(false);
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 5000 }
@@ -202,6 +206,28 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     }
   };
 
+  useEffect(() => {
+    if (!loading) {
+      const soVal = attendance?.stepOut;
+      const soTimeVal = attendance?.stepOutTime;
+      const hasValidSO = (soVal && soVal !== 'null') || (soTimeVal && soTimeVal !== 'null');
+      const isSteppedIn = attendance && 
+        (!!attendance.stepIn || !!attendance.stepInTime) && 
+        attendance.stepIn !== 'null' && 
+        attendance.stepInTime !== 'null' && 
+        !hasValidSO;
+      const isSteppingIn = !attendance || !isSteppedIn;
+
+      if (isSteppingIn) {
+        const timer = setTimeout(() => {
+          capturePhoto();
+        }, 800);
+        return () => clearTimeout(timer);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   const triggerSuccess = () => {
     setShowSuccess(true);
     setTimeout(() => {
@@ -211,11 +237,14 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
   };
 
   const handleSubmission = async () => {
+    const soVal2 = attendance?.stepOut;
+    const soTimeVal2 = attendance?.stepOutTime;
+    const hasValidSO2 = (soVal2 && soVal2 !== 'null') || (soTimeVal2 && soTimeVal2 !== 'null');
     const isSteppedIn = attendance && 
       (!!attendance.stepIn || !!attendance.stepInTime) && 
       attendance.stepIn !== 'null' && 
       attendance.stepInTime !== 'null' && 
-      (!attendance.stepOut && !attendance.stepOutTime || attendance.stepOut === 'null' || attendance.stepOutTime === 'null');
+      !hasValidSO2;
     const isSteppingIn = !attendance || !isSteppedIn;
     
     if (isSteppingIn && !photo) {
@@ -255,6 +284,7 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
           stepIn: record.stepIn || record.stepInTime,
           stepOut: record.stepOut || record.stepOutTime,
         };
+        setAttendance(normalized); // Update local state immediately so button changes
         await AsyncStorage.setItem('@attendance_today', JSON.stringify(normalized));
       }
       
@@ -275,11 +305,14 @@ export default function EmployeeAttendanceScreen({ navigation }: any) {
     );
   }
 
+  const renderSoVal = attendance?.stepOut;
+  const renderSoTimeVal = attendance?.stepOutTime;
+  const renderHasValidSO = (renderSoVal && renderSoVal !== 'null') || (renderSoTimeVal && renderSoTimeVal !== 'null');
   const isSteppedIn = attendance && 
     (!!attendance.stepIn || !!attendance.stepInTime) && 
     attendance.stepIn !== 'null' && 
     attendance.stepInTime !== 'null' && 
-    (!attendance.stepOut && !attendance.stepOutTime || attendance.stepOut === 'null' || attendance.stepOutTime === 'null');
+    !renderHasValidSO;
   const isSteppingIn = !attendance || !isSteppedIn;
   const isCompleted = false; // Allow unlimited step-in/out cycles throughout the day
 

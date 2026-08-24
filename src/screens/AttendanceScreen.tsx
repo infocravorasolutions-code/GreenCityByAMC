@@ -176,11 +176,18 @@ export default function AttendanceScreen() {
         // Sort them by date descending to get the absolute most recent one. 
         // Sort them by date descending to get the absolute most recent one. 
         empRecords.sort((a: any, b: any) => {
-          let timeB = new Date(b.date || b.createdAt || b.shiftFirstStepIn || 0).getTime();
-          let timeA = new Date(a.date || a.createdAt || a.shiftFirstStepIn || 0).getTime();
+          // Prefer createdAt (unique per record) over date (same for all records on same day)
+          // Also use stepIn timestamp and _id (MongoDB ObjectIDs are chronological) as tiebreakers
+          let timeB = new Date(b.createdAt || b.date || b.stepIn || b.shiftFirstStepIn || 0).getTime();
+          let timeA = new Date(a.createdAt || a.date || a.stepIn || a.shiftFirstStepIn || 0).getTime();
           
           if (isNaN(timeB)) timeB = 0;
           if (isNaN(timeA)) timeA = 0;
+          
+          // If timestamps are equal, use _id as tiebreaker (MongoDB ObjectIDs sort chronologically)
+          if (timeB === timeA && a._id && b._id) {
+            return b._id > a._id ? 1 : b._id < a._id ? -1 : 0;
+          }
           
           return timeB - timeA;
         });
@@ -296,12 +303,12 @@ export default function AttendanceScreen() {
 
         if (!fineGranted && !coarseGranted) {
           setFetchingLocation(false);
-          setLocationText('');
+          setLocationText(selectedZone || user?.zoneLabel || user?.zone || 'AMC Area');
           return;
         }
-      } catch (err) {
+      } catch {
         setFetchingLocation(false);
-        setLocationText('');
+        setLocationText(selectedZone || user?.zoneLabel || user?.zone || 'AMC Area');
         return;
       }
     }
@@ -309,7 +316,12 @@ export default function AttendanceScreen() {
     // Forcefully stop loading after 8 seconds in case native GPS API completely hangs
     const fallbackTimeout = setTimeout(() => {
       setFetchingLocation(false);
-      setLocationText(prev => prev === 'Locating automatically...' ? '' : prev);
+      setLocationText(prev => {
+        if (prev === 'Locating automatically...' || !prev) {
+          return selectedZone || user?.zoneLabel || user?.zone || 'AMC Area';
+        }
+        return prev;
+      });
     }, 8000);
 
     Geolocation.getCurrentPosition(
@@ -325,16 +337,21 @@ export default function AttendanceScreen() {
             }
           });
           const json = await res.json();
-          setLocationText(json.display_name || '');
-        } catch (e) {
-          setLocationText(''); // Clear it so they can type
+          setLocationText(json.display_name || selectedZone || user?.zoneLabel || user?.zone || 'AMC Area');
+        } catch {
+          setLocationText(selectedZone || user?.zoneLabel || user?.zone || 'AMC Area');
         }
         setFetchingLocation(false);
       },
       (error) => {
         clearTimeout(fallbackTimeout);
         console.warn(`[GPS ERROR] ${error.message}`);
-        setLocationText(prev => prev === 'Locating automatically...' ? '' : prev); // Failed, let them type
+        setLocationText(prev => {
+          if (prev === 'Locating automatically...' || !prev) {
+            return selectedZone || user?.zoneLabel || user?.zone || 'AMC Area';
+          }
+          return prev;
+        });
         setFetchingLocation(false);
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 5000 }
@@ -424,6 +441,17 @@ export default function AttendanceScreen() {
       }
 
       console.log(`[Attendance] Successfully completed ${isSteppingIn ? 'Step In' : 'Step Out'}`);
+
+      // Optimistic UI update: immediately flip the employee's working status
+      // so the button changes right away without waiting for the API refetch
+      const updatedEmployees = employees.map(emp =>
+        emp._id === selectedEmployee._id
+          ? { ...emp, isWorking: isSteppingIn } // was stepping in → now working; was stepping out → no longer working
+          : emp
+      );
+      setEmployees(updatedEmployees);
+      handleSearch(search, updatedEmployees);
+
       triggerSuccess();
       // resetForm and fetchEmployees are now handled inside triggerSuccess after the animation
     } catch (error: any) {
