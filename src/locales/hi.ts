@@ -52,6 +52,10 @@ export const hi = {
   "reports.present": "आज उपस्थित",
   "reports.absent": "आज अनुपस्थित",
   "reports.leaves": "छुट्टी पर",
+  "reports.stepIn": "स्टेप इन",
+  "reports.stepOut": "स्टेप आउट",
+  "reports.stepInLocation": "स्टेप-इन स्थान",
+  "reports.stepOutLocation": "स्टेप-आउट स्थान",
 
   // Tasks
   "tasks.title": "वार्ड के कार्य",

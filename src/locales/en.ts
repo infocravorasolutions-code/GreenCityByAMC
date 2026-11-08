@@ -52,6 +52,10 @@ export const en = {
   "reports.present": "Present Today",
   "reports.absent": "Absent Today",
   "reports.leaves": "On Leave",
+  "reports.stepIn": "Step In",
+  "reports.stepOut": "Step Out",
+  "reports.stepInLocation": "Step-in location",
+  "reports.stepOutLocation": "Step-out location",
 
   // Tasks
   "tasks.title": "Ward Tasks",

@@ -52,6 +52,10 @@ export const gu = {
   "reports.present": "આજે હાજર",
   "reports.absent": "આજે ગેરહાજર",
   "reports.leaves": "રજા પર",
+  "reports.stepIn": "સ્ટેપ ઇન",
+  "reports.stepOut": "સ્ટેપ આઉટ",
+  "reports.stepInLocation": "સ્ટેપ-ઇન સ્થાન",
+  "reports.stepOutLocation": "સ્ટેપ-આઉટ સ્થાન",
 
   // Tasks
   "tasks.title": "વોર્ડના કાર્યો",

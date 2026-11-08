@@ -18,11 +18,39 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { Modal } from 'react-native';
 
+function formatPunchTime(value: any) {
+  if (!value || value === 'null') return '—';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatGpsLocation(address?: any, latRaw?: any, lngRaw?: any) {
+  const addr = String(address || '').trim();
+  if (addr) return addr;
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+  return '—';
+}
+
+function getStepInTime(item: any) {
+  return item?.stepIn || item?.shiftFirstStepIn || item?.workSessions?.[0]?.stepIn || item?.checkInAt || null;
+}
+
+function getStepOutTime(item: any) {
+  if (item?.stepIn && !item?.stepOut && !item?.shiftLastStepOut) return null;
+  const sessions = Array.isArray(item?.workSessions) ? item.workSessions : [];
+  return item?.shiftLastStepOut || sessions[sessions.length - 1]?.stepOut || item?.stepOut || item?.checkOutAt || null;
+}
+
 export default function AttendanceReportScreen() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const { user, selectedZone, setSelectedZone } = useAuth();
   const userZones = user?.zones || (user as any)?.supervisorZones || [];
   const [showZonePicker, setShowZonePicker] = useState(false);
@@ -326,24 +354,34 @@ export default function AttendanceReportScreen() {
                   {renderBadge(item.shift)}
                 </View>
 
-
-
                 <View style={styles.metricCol}>
                   <Text style={styles.metricHeader}>Status</Text>
                   {renderBadge(item.status || 'Present')}
                 </View>
                 <View style={styles.metricCol}>
+                  <Text style={styles.metricHeader}>{t('reports.stepIn')}</Text>
+                  <Text style={styles.metricData}>{formatPunchTime(getStepInTime(item))}</Text>
+                </View>
+                <View style={[styles.metricCol, { maxWidth: 200 }]}>
+                  <Text style={styles.metricHeader}>{t('reports.stepInLocation')}</Text>
+                  <Text style={styles.metricData} numberOfLines={2}>
+                    {formatGpsLocation(item.address, item.latitude, item.longitude)}
+                  </Text>
+                </View>
+                <View style={styles.metricCol}>
+                  <Text style={styles.metricHeader}>{t('reports.stepOut')}</Text>
+                  <Text style={styles.metricData}>{formatPunchTime(getStepOutTime(item))}</Text>
+                </View>
+                <View style={[styles.metricCol, { maxWidth: 200 }]}>
+                  <Text style={styles.metricHeader}>{t('reports.stepOutLocation')}</Text>
+                  <Text style={styles.metricData} numberOfLines={2}>
+                    {formatGpsLocation(item.stepOutAddress, item.stepOutLatitude, item.stepOutLongitude)}
+                  </Text>
+                </View>
+                <View style={styles.metricCol}>
                   <Text style={styles.metricHeader}>Total Time</Text>
                   <Text style={[styles.metricData, { fontWeight: '700' }]}>{formatTotalTime(item.totalTime)}</Text>
                 </View>
-                {user?.role === 'supervisor' && (
-                  <View style={[styles.metricCol, { maxWidth: 200 }]}>
-                    <Text style={styles.metricHeader}>Location</Text>
-                    <Text style={styles.metricData} numberOfLines={2}>
-                      {item.address || 'N/A'}
-                    </Text>
-                  </View>
-                )}
               </ScrollView>
             </View>
           );
@@ -632,3 +670,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+
